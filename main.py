@@ -3,7 +3,7 @@ import logging
 import signal
 from config import Config
 from telegram_client import TelegramClient
-from api_client import ApiFootballClient
+from utils.api_client import ApiFootballClient
 from scheduler_manager import SchedulerManager
 from web_server import WebServer
 from modules.jogos_elite import JogosEliteModule
