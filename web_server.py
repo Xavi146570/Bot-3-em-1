@@ -16,12 +16,14 @@ class WebServer:
         logger.info("🌐 Web Server inicializado")
     
     def setup_routes(self):
-        """Configura rotas com suporte a múltiplos métodos HTTP"""
-        # Health check aceita qualquer método (resolve erro 405)
+        """Configura rotas otimizadas sem conflitos"""
+        # Health check na raiz - aceita TODOS os métodos (resolve 405)
         self.app.router.add_route('*', '/', self.health_check)
-        self.app.router.add_get('/health', self.health_check)
-        self.app.router.add_head('/health', self.health_check)
         
+        # Endpoint alternativo /health - GET automaticamente inclui HEAD
+        self.app.router.add_get('/health', self.health_check)
+        
+        # Endpoints específicos
         self.app.router.add_get('/status', self.get_status)
         self.app.router.add_post('/trigger/{module}', self.trigger_module)
     
@@ -54,7 +56,8 @@ class WebServer:
                     for name, config in enabled_modules.items()
                 },
                 "endpoints": {
-                    "health": "/health",
+                    "health_root": "/",
+                    "health_alt": "/health", 
                     "status": "/status",
                     "trigger_elite": "/trigger/elite",
                     "trigger_regressao": "/trigger/regressao",
@@ -79,7 +82,7 @@ class WebServer:
         try:
             logger.info(f"🎯 Executando '{module_name}' via API trigger")
             
-            # Executar módulo em background para resposta rápida
+            # Executar em background para resposta rápida
             asyncio.create_task(self.modules[module_name].execute())
             
             return web.json_response({
