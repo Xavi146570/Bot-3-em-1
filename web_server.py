@@ -16,20 +16,26 @@ class WebServer:
         logger.info("🌐 Web Server inicializado")
     
     def setup_routes(self):
-        """Configura rotas do servidor"""
-        self.app.router.add_get('/', self.health_check)
-        self.app.router.add_get('/status', self.get_status)
-        self.app.router.add_post('/trigger/{module}', self.trigger_module)
+    """Configura rotas com suporte a múltiplos métodos"""
+    # Health check aceita qualquer método HTTP
+    self.app.router.add_route('*', '/', self.health_check)
+    self.app.router.add_get('/health', self.health_check)  # Backup endpoint
+    self.app.router.add_head('/health', self.health_check)  # Para HEAD requests
     
-    async def health_check(self, request):
-        """Endpoint de health check para o Render"""
-        return web.json_response({
-            "status": "healthy",
-            "service": "Bot Futebol Consolidado",
-            "timestamp": datetime.now().isoformat(),
-            "modules_count": len(self.modules),
-            "version": "1.0.0"
-        })
+    self.app.router.add_get('/status', self.get_status)
+    self.app.router.add_post('/trigger/{module}', self.trigger_module)
+
+async def health_check(self, request):
+    """Health check robusto para Render"""
+    return web.json_response({
+        "status": "healthy",
+        "service": "Bot Futebol Consolidado",
+        "timestamp": datetime.now().isoformat(),
+        "modules_count": len(self.modules),
+        "version": "1.0.0",
+        "method": request.method,  # Debug info
+        "uptime": "running"
+    })
     
     async def get_status(self, request):
         """Status detalhado do sistema"""
