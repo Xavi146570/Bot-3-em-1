@@ -36,72 +36,108 @@ class JogosEliteModule:
         return name
     
     async def execute(self):
-        """Executa o monitoramento de jogos de elite - VERSÃO OTIMIZADA"""
-        if not Config.ELITE_ENABLED:
-            logger.info("Módulo Elite desabilitado")
+    """Executa o monitoramento de jogos de elite - VERSÃO ROBUSTA COM DEBUG"""
+    if not Config.ELITE_ENABLED:
+        logger.info("Módulo Elite desabilitado")
+        return
+    
+    logger.info("🌟 Executando monitoramento de jogos de elite...")
+    
+    try:
+        # Buscar jogos dos próximos 2 dias COM STATUS MÚLTIPLOS
+        all_matches = []
+        for days_ahead in range(2):
+            date_str = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+            logger.info(f"🔍 Buscando jogos para {date_str}")
+            
+            # CORREÇÃO: Buscar múltiplos status
+            matches_ns = self.api_client.get_fixtures_by_date(date_str, status="NS") or []
+            matches_tbd = self.api_client.get_fixtures_by_date(date_str, status="TBD") or []
+            matches = matches_ns + matches_tbd
+            
+            all_matches.extend(matches)
+            logger.info(f"📅 {date_str}: NS={len(matches_ns)}, TBD={len(matches_tbd)}, Total={len(matches)}")
+            
+            # LOG DEBUG: Mostrar primeiros jogos encontrados
+            for i, match in enumerate(matches[:3]):
+                home_team = match['teams']['home']['name']
+                away_team = match['teams']['away']['name']
+                league_name = match['league']['name']
+                logger.info(f"   {i+1}. {home_team} vs {away_team} ({league_name})")
+        
+        if not all_matches:
+            logger.warning("❌ NENHUM JOGO ENCONTRADO - Verificando API")
+            message = "⚠️ DIAGNÓSTICO: Nenhuma partida futura encontrada. Verificando configuração da API..."
+            await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
             return
         
-        logger.info("🌟 Executando monitoramento de jogos de elite...")
+        logger.info(f"📊 Total de jogos para analisar: {len(all_matches)}")
         
-        try:
-            # Buscar jogos dos próximos 2 dias
-            all_matches = []
-            for days_ahead in range(2):
-                date_str = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-                # CORREÇÃO: Garantir filtro NS (Not Started)
-                matches = self.api_client.get_fixtures_by_date(date_str, league_id=None, status="NS")
-                all_matches.extend(matches)
-                logger.info(f"📅 {date_str}: {len(matches)} jogos encontrados")
+        # Verificar times elite nos jogos
+        elite_found = []
+        for match in all_matches:
+            home_team = match['teams']['home']['name']
+            away_team = match['teams']['away']['name']
             
-            if not all_matches:
-                message = "ℹ️ Nenhuma partida futura encontrada para análise de times elite."
-                await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
-                return
-            
-            logger.info(f"📊 Total de jogos para analisar: {len(all_matches)}")
-            notifications_sent = 0
-            
-            for match in all_matches:
-                try:
-                    fixture_id = match['fixture']['id']
-                    if fixture_id in self.notified_fixtures:
-                        continue
+            if self.normalize_name(home_team) in self.elite_teams_normalized:
+                elite_found.append(f"🏠 {home_team}")
+            if self.normalize_name(away_team) in self.elite_teams_normalized:
+                elite_found.append(f"✈️ {away_team}")
+        
+        logger.info(f"🌟 Times elite encontrados: {len(elite_found)}")
+        for team in elite_found[:5]:
+            logger.info(f"   {team}")
+        
+        notifications_sent = 0
+        
+        for match in all_matches:
+            try:
+                fixture_id = match['fixture']['id']
+                if fixture_id in self.notified_fixtures:
+                    continue
+                
+                home_team = match['teams']['home']['name']
+                away_team = match['teams']['away']['name']
+                home_id = match['teams']['home']['id']
+                away_id = match['teams']['away']['id']
+                league_name = match['league']['name']
+                league_id = match['league']['id']
+                season = match['league']['season']
+                
+                qualifying_teams = []
+                
+                # Verificar time da casa
+                if self.normalize_name(home_team) in self.elite_teams_normalized:
+                    logger.info(f"🔍 Verificando {home_team} (ID: {home_id}, Liga: {league_id}, Season: {season})")
+                    avg = self.api_client.get_team_goals_average(home_id, league_id, season)
+                    logger.info(f"📊 {home_team} média: {avg} (threshold: {Config.ELITE_GOALS_THRESHOLD})")
                     
-                    home_team = match['teams']['home']['name']
-                    away_team = match['teams']['away']['name']
-                    # CORREÇÃO CRÍTICA: Usar IDs do fixture (mais confiável que busca por nome)
-                    home_id = match['teams']['home']['id']
-                    away_id = match['teams']['away']['id']
-                    league_name = match['league']['name']
-                    league_id = match['league']['id']
-                    season = match['league']['season']  # Usar season da API
+                    if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
+                        qualifying_teams.append(f"🏠 {home_team}: {avg:.2f} gols/jogo")
+                        logger.info(f"✅ {home_team} QUALIFICADO!")
+                    else:
+                        logger.info(f"❌ {home_team} não qualificado (avg={avg})")
+                
+                # Verificar time visitante
+                if self.normalize_name(away_team) in self.elite_teams_normalized:
+                    logger.info(f"🔍 Verificando {away_team} (ID: {away_id}, Liga: {league_id}, Season: {season})")
+                    avg = self.api_client.get_team_goals_average(away_id, league_id, season)
+                    logger.info(f"📊 {away_team} média: {avg} (threshold: {Config.ELITE_GOALS_THRESHOLD})")
                     
-                    qualifying_teams = []
+                    if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
+                        qualifying_teams.append(f"✈️ {away_team}: {avg:.2f} gols/jogo")
+                        logger.info(f"✅ {away_team} QUALIFICADO!")
+                    else:
+                        logger.info(f"❌ {away_team} não qualificado (avg={avg})")
+                
+                if qualifying_teams:
+                    try:
+                        dt = datetime.fromisoformat(match['fixture']['date'].replace('Z', '+00:00'))
+                        formatted_datetime = dt.strftime("%d/%m/%Y às %H:%M UTC")
+                    except:
+                        formatted_datetime = match['fixture']['date']
                     
-                    # Verificar time da casa
-                    if self.normalize_name(home_team) in self.elite_teams_normalized:
-                        logger.debug(f"🔍 Verificando {home_team} (ID: {home_id})")
-                        avg = self.api_client.get_team_goals_average(home_id, league_id, season)
-                        logger.debug(f"📊 {home_team} média: {avg}")
-                        if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
-                            qualifying_teams.append(f"🏠 {home_team}: {avg:.2f} gols/jogo")
-                    
-                    # Verificar time visitante
-                    if self.normalize_name(away_team) in self.elite_teams_normalized:
-                        logger.debug(f"🔍 Verificando {away_team} (ID: {away_id})")
-                        avg = self.api_client.get_team_goals_average(away_id, league_id, season)
-                        logger.debug(f"📊 {away_team} média: {avg}")
-                        if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
-                            qualifying_teams.append(f"✈️ {away_team}: {avg:.2f} gols/jogo")
-                    
-                    if qualifying_teams:
-                        try:
-                            dt = datetime.fromisoformat(match['fixture']['date'].replace('Z', '+00:00'))
-                            formatted_datetime = dt.strftime("%d/%m/%Y às %H:%M UTC")
-                        except:
-                            formatted_datetime = match['fixture']['date']
-                        
-                        message = f"""🌟 <b>JOGO DE ELITE DETECTADO!</b> 🌟
+                    message = f"""🌟 <b>JOGO DE ELITE DETECTADO!</b> 🌟
 
 🏆 <b>Liga:</b> {league_name}
 ⚽ <b>Partida:</b> {home_team} vs {away_team}
@@ -113,25 +149,35 @@ class JogosEliteModule:
 💡 <b>Análise:</b> Time(s) de elite com alta média ofensiva detectado(s)
 🎯 <b>Recomendação:</b> Over 2.5 gols, BTTS
 
-📊 <b>Critério:</b> Times da lista elite com ≥ {Config.ELITE_GOALS_THRESHOLD} gols/jogo na temporada atual
+📊 <b>Critério:</b> Times da lista elite com ≥ {Config.ELITE_GOALS_THRESHOLD} gols/jogo na temporada {season}
 📅 <b>Gerado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC"""
-                        
-                        success = await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
-                        if success:
-                            self.notified_fixtures.add(fixture_id)
-                            notifications_sent += 1
-                            logger.info(f"✅ Elite: {home_team} vs {away_team}")
-                
-                except Exception as e:
-                    logger.error(f"❌ Erro ao processar partida elite: {e}")
-                    continue
+                    
+                    success = await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
+                    if success:
+                        self.notified_fixtures.add(fixture_id)
+                        notifications_sent += 1
+                        logger.info(f"✅ Elite: {home_team} vs {away_team}")
             
-            # Enviar resumo
-            summary = f"ℹ️ <b>Monitoramento Elite Concluído</b>\n\n📊 Partidas analisadas: {len(all_matches)}\n🚨 Alertas enviados: {notifications_sent}\n⏰ Próxima verificação em {Config.ELITE_INTERVAL_HOURS}h"
-            await self.telegram_client.send_message(Config.CHAT_ID_ELITE, summary)
-            
-        except Exception as e:
-            logger.error(f"❌ Erro no módulo elite: {e}")
-            await self.telegram_client.send_admin_message(f"Erro módulo elite: {e}")
+            except Exception as e:
+                logger.error(f"❌ Erro ao processar partida elite: {e}", exc_info=True)
+                continue
         
-        logger.info("🌟 Módulo Elite concluído")
+        # Enviar resumo detalhado
+        summary = f"""ℹ️ <b>Monitoramento Elite Concluído</b>
+
+📊 Partidas analisadas: {len(all_matches)}
+🌟 Times elite encontrados: {len(elite_found)}
+🚨 Alertas enviados: {notifications_sent}
+⏰ Próxima verificação em {Config.ELITE_INTERVAL_HOURS}h
+
+🔧 Threshold atual: {Config.ELITE_GOALS_THRESHOLD}
+📅 Temporada: {datetime.now().year}"""
+        
+        await self.telegram_client.send_message(Config.CHAT_ID_ELITE, summary)
+        
+    except Exception as e:
+        logger.error(f"❌ Erro crítico no módulo Elite: {e}", exc_info=True)
+        await self.telegram_client.send_admin_message(f"Erro crítico no módulo Elite: {e}")
+    
+    logger.info("🌟 Módulo Elite concluído")
+
