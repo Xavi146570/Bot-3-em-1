@@ -53,35 +53,37 @@ class BotConsolidado:
         logger.info(f"📦 Bot inicializado com {len(self.modules)} módulos")
     
     def setup_jobs(self):
-        """Configura jobs do scheduler"""
-        logger.info("⏰ Configurando jobs...")
-        
-        # Job Elite - a cada X horas
-        if 'elite' in self.modules:
-            self.scheduler.add_interval_job(
-                self.modules['elite'].execute,
-                Config.ELITE_INTERVAL_HOURS * 60,  # converter para minutos
-                'job_elite'
-            )
-        
-        # Job Regressão - a cada X minutos
-        if 'regressao' in self.modules:
-            self.scheduler.add_interval_job(
-                self.modules['regressao'].execute,
-                Config.REGRESSAO_INTERVAL_MINUTES,
-                'job_regressao'
-            )
-        
-        # Job Campeonatos - 2x por dia
-        if 'campeonatos' in self.modules:
-            self.scheduler.add_cron_job(
-                self.modules['campeonatos'].execute,
-                9, 0, 'job_campeonatos_manha'
-            )
-            self.scheduler.add_cron_job(
-                self.modules['campeonatos'].execute,
-                18, 0, 'job_campeonatos_tarde'
-            )
+    """Configura jobs do scheduler com execução imediata para testes"""
+    logger.info("⏰ Configurando jobs...")
+    
+    # Job Elite - executar imediatamente + a cada 24h
+    if 'elite' in self.modules:
+        self.scheduler.add_interval_job(
+            self.modules['elite'].execute,
+            Config.ELITE_INTERVAL_HOURS * 60,
+            'job_elite',
+            run_immediately=True  # EXECUÇÃO IMEDIATA
+        )
+    
+    # Job Regressão - executar imediatamente + a cada 30min
+    if 'regressao' in self.modules:
+        self.scheduler.add_interval_job(
+            self.modules['regressao'].execute,
+            Config.REGRESSAO_INTERVAL_MINUTES,
+            'job_regressao',
+            run_immediately=True  # EXECUÇÃO IMEDIATA
+        )
+    
+    # Jobs Campeonatos permanecem nos horários fixos
+    if 'campeonatos' in self.modules:
+        self.scheduler.add_cron_job(
+            self.modules['campeonatos'].execute,
+            9, 0, 'job_campeonatos_manha'
+        )
+        self.scheduler.add_cron_job(
+            self.modules['campeonatos'].execute,
+            18, 0, 'job_campeonatos_tarde'
+        )
     
     async def start(self):
         """Inicia o bot consolidado"""
