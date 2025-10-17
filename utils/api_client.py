@@ -17,10 +17,7 @@ class ApiFootballClient:
         self.livescore_key = Config.LIVESCORE_API_KEY or Config.API_FOOTBALL_KEY
         self.base_url = "https://v3.football.api-sports.io"
         
-        # Contador de requisições
         self.request_count = 0
-        
-        # Cache para armazenar respostas
         self.cache: Dict[str, Tuple[Any, float]] = {}
         self.cache_durations = {
             "fixtures": 300,        # 5 minutos
@@ -41,23 +38,18 @@ class ApiFootballClient:
                       use_livescore_key: bool = False) -> List[Dict[str, Any]]:
         """Faz requisição HTTP GET com cache e retries"""
         
-        # Verificar cache primeiro
         if cache_key and cache_type:
             cached_data = self.cache.get(cache_key)
             if cached_data and self._is_cache_valid(cached_data[1], cache_type):
                 logger.debug(f"Cache hit para {cache_key}")
                 return cached_data[0]
         
-        # Verificar limite de requisições
         if self.request_count >= Config.MAX_API_REQUESTS:
             logger.warning(f"Limite de {Config.MAX_API_REQUESTS} requisições atingido")
             return []
         
-        # Escolher chave da API
-        current_api_key = self.livescore_key if use_livescore_key else self.football_key
-        headers = {"x-apisports-key": current_api_key}
+        headers = {"x-apisports-key": self.livescore_key if use_livescore_key else self.football_key}
         
-        # Fazer requisição com retries
         for attempt in range(3):
             if self.request_count > 0:
                 time.sleep(Config.API_REQUEST_DELAY)
@@ -81,7 +73,6 @@ class ApiFootballClient:
                 response.raise_for_status()
                 data = response.json().get("response", [])
                 
-                # Armazenar no cache
                 if cache_key and cache_type:
                     self.cache[cache_key] = (data, time.time())
                 
@@ -109,7 +100,7 @@ class ApiFootballClient:
         cache_key = f"team_id:{team_name}"
         data = self._make_request("/teams", {"search": team_name}, cache_key, "team_info")
         
-        if data and data[0].get("team", {}).get("id"):
+        if data and len(data) > 0 and data[0].get("team", {}).get("id"):
             return data[0]["team"]["id"]
         return None
 
@@ -131,49 +122,49 @@ class ApiFootballClient:
         return self._make_request("/fixtures", params, cache_key, "team_stats")
 
     def get_team_goals_average(self, team_id: int, league_id: int, season: int) -> Optional[float]:
-    """Obtém média de gols de um time em uma liga/temporada - VERSÃO CORRIGIDA"""
-    cache_key = f"team_avg:{team_id}:{league_id}:{season}"
-    data = self._make_request("/teams/statistics", {
-        "team": team_id,
-        "league": league_id,
-        "season": season
-    }, cache_key, "team_stats")
-    
-    if not data:
-        return None
-
-    try:
-        # CORREÇÃO CRÍTICA: API retorna objeto, não lista
-        stats = data[0] if isinstance(data, list) and data else data
-        if not stats:
+        """Obtém média de gols de um time em uma liga/temporada - VERSÃO CORRIGIDA"""
+        cache_key = f"team_avg:{team_id}:{league_id}:{season}"
+        data = self._make_request("/teams/statistics", {
+            "team": team_id,
+            "league": league_id,
+            "season": season
+        }, cache_key, "team_stats")
+        
+        if not data:
             return None
 
-        # Tentar pegar média pré-calculada
-        avg_str = (stats.get("goals", {})
-                       .get("for", {})
-                       .get("average", {})
-                       .get("total"))
-        
-        if avg_str is not None and str(avg_str).strip():
-            return float(avg_str)
-        
-        # FALLBACK: Calcular média se API não fornecer
-        total_goals = (stats.get("goals", {})
+        try:
+            # CORREÇÃO CRÍTICA: API pode retornar objeto ou lista
+            stats = data[0] if isinstance(data, list) and data else data
+            if not stats:
+                return None
+
+            # Tentar pegar média pré-calculada da API
+            avg_str = (stats.get("goals", {})
                            .get("for", {})
-                           .get("total", {})
-                           .get("total", 0))
-        total_games = (stats.get("fixtures", {})
-                           .get("played", {})
-                           .get("total", 0))
-        
-        if total_games > 0:
-            return round(total_goals / total_games, 2)
-        else:
-            return 0.0
+                           .get("average", {})
+                           .get("total"))
             
-    except Exception as e:
-        logger.warning(f"Erro ao processar média do time {team_id}: {e}")
-        return None
+            if avg_str is not None and str(avg_str).strip():
+                return float(avg_str)
+            
+            # FALLBACK: Calcular média manualmente se API não fornecer
+            total_goals = (stats.get("goals", {})
+                               .get("for", {})
+                               .get("total", {})
+                               .get("total", 0))
+            total_games = (stats.get("fixtures", {})
+                               .get("played", {})
+                               .get("total", 0))
+            
+            if total_games > 0:
+                return round(total_goals / total_games, 2)
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logger.warning(f"Erro ao processar média do time {team_id}: {e}")
+            return None
 
     def get_teams_stats_batch(self, team_ids: List[int], last_n: int = 4) -> Dict[int, Tuple[Optional[float], int]]:
         """Obtém estatísticas de gols para múltiplos times"""
@@ -235,4 +226,3 @@ class ApiFootballClient:
             logger.error(f"Erro async na API: {e}")
         
         return []
-
