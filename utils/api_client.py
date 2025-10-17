@@ -131,27 +131,48 @@ class ApiFootballClient:
         return self._make_request("/fixtures", params, cache_key, "team_stats")
 
     def get_team_goals_average(self, team_id: int, league_id: int, season: int) -> Optional[float]:
-        """Obtém média de gols de um time em uma liga/temporada"""
-        cache_key = f"team_avg:{team_id}:{league_id}:{season}"
-        data = self._make_request("/teams/statistics", {
-            "team": team_id,
-            "league": league_id,
-            "season": season
-        }, cache_key, "team_stats")
+    """Obtém média de gols de um time em uma liga/temporada - VERSÃO CORRIGIDA"""
+    cache_key = f"team_avg:{team_id}:{league_id}:{season}"
+    data = self._make_request("/teams/statistics", {
+        "team": team_id,
+        "league": league_id,
+        "season": season
+    }, cache_key, "team_stats")
+    
+    if not data:
+        return None
+
+    try:
+        # CORREÇÃO CRÍTICA: API retorna objeto, não lista
+        stats = data[0] if isinstance(data, list) and data else data
+        if not stats:
+            return None
+
+        # Tentar pegar média pré-calculada
+        avg_str = (stats.get("goals", {})
+                       .get("for", {})
+                       .get("average", {})
+                       .get("total"))
         
-        if data:
-            try:
-                stats = data[0]
-                avg_str = stats["goals"]["for"]["average"]["total"]
-                if avg_str and avg_str.strip():
-                    return float(avg_str)
-                else:
-                    total_goals = stats["goals"]["for"]["total"]["total"]
-                    total_games = stats["fixtures"]["played"]["total"]
-                    return total_goals / total_games if total_games > 0 else 0.0
-            except Exception as e:
-                logger.warning(f"Erro ao processar média de gols: {e}")
-                return None
+        if avg_str is not None and str(avg_str).strip():
+            return float(avg_str)
+        
+        # FALLBACK: Calcular média se API não fornecer
+        total_goals = (stats.get("goals", {})
+                           .get("for", {})
+                           .get("total", {})
+                           .get("total", 0))
+        total_games = (stats.get("fixtures", {})
+                           .get("played", {})
+                           .get("total", 0))
+        
+        if total_games > 0:
+            return round(total_goals / total_games, 2)
+        else:
+            return 0.0
+            
+    except Exception as e:
+        logger.warning(f"Erro ao processar média do time {team_id}: {e}")
         return None
 
     def get_teams_stats_batch(self, team_ids: List[int], last_n: int = 4) -> Dict[int, Tuple[Optional[float], int]]:
