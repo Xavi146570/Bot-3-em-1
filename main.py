@@ -1,3 +1,19 @@
+import logging
+
+# Configuração básica de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# 🔐 SEGURANÇA: Ocultar tokens nos logs
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Só warnings e erros
+logging.getLogger("httpcore").setLevel(logging.WARNING)  # Biblioteca base do httpx
+
+logger = logging.getLogger(__name__)
+logger.info("🔐 Sistema de logging seguro ativado - tokens ocultos")
+
 import asyncio
 import logging
 import signal
