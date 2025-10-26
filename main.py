@@ -1,227 +1,249 @@
+import asyncio
 import logging
+import os
+import re
+from datetime import datetime, timezone
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from config import Config
+from telegram_client import TelegramClient
+from utils.api_client import ApiFootballClient
+from utils.keep_alive import keep_alive
+from modules.jogos_elite import JogosEliteModule
+from modules.regressao_media import RegressaoMediaModule
 
-# Configuração básica de logging
+# Filtro para censurar tokens nos logs
+class RedactSecretsFilter(logging.Filter):
+    def __init__(self):
+        super().__init__()
+        self.token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self.token_pattern = re.compile(r'bot\d{6,}:[A-Za-z0-9_-]+')
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if self.token:
+            msg = msg.replace(self.token, "<REDACTED>")
+        msg = self.token_pattern.sub("bot<REDACTED>", msg)
+        record.msg = msg
+        record.args = ()
+        return True
+
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# 🔐 SEGURANÇA: Ocultar tokens nos logs
-logging.getLogger("httpx").setLevel(logging.WARNING)  # Só warnings e erros
-logging.getLogger("httpcore").setLevel(logging.WARNING)  # Biblioteca base do httpx
+# Aplicar filtro e reduzir verbosidade
+redact_filter = RedactSecretsFilter()
+for handler in logging.getLogger().handlers:
+    handler.addFilter(redact_filter)
 
-logger = logging.getLogger(__name__)
-logger.info("🔐 Sistema de logging seguro ativado - tokens ocultos")
-
-import asyncio
-import logging
-import signal
-from datetime import datetime
-from config import Config, setup_logging
-from telegram_client import TelegramClient
-from utils.api_client import ApiFootballClient
-from utils.keep_alive import KeepAlive
-from scheduler_manager import SchedulerManager
-from web_server import WebServer
-
-# Imports dos módulos
-from modules.jogos_elite import JogosEliteModule
-from modules.regressao_media import RegressaoMediaModule
-from modules.campeonatos_padrao import CampeonatosPadraoModule
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 class BotConsolidado:
-    """Sistema consolidado dos três bots de futebol"""
+    """Bot de Futebol Consolidado - VERSÃO OTIMIZADA PARA ECONOMIA DE API"""
     
     def __init__(self):
-        logger.info("🚀 Inicializando Bot Consolidado...")
+        logger.info("🚀 Iniciando Bot Futebol Consolidado - MODO ECONOMIA")
         
-        # Clientes principais
-        self.telegram_client = TelegramClient()
-        self.api_client = ApiFootballClient()
-        self.scheduler = SchedulerManager()
+        # Inicializar clientes
+        self.telegram_client = TelegramClient(Config.TELEGRAM_BOT_TOKEN)
+        self.api_client = ApiFootballClient(Config.API_FOOTBALL_KEY)
         
-        # Keep-Alive para evitar sleep no Render Free
-        self.keep_alive = KeepAlive()
-        self.keep_alive_task = None
-        
-        self.running = False
-        
-        # Inicializar módulos baseado na configuração
+        # Inicializar módulos
         self.modules = {}
-        enabled_modules = Config.get_enabled_modules()
         
-        if enabled_modules.get('elite', {}).get('enabled'):
-            self.modules['elite'] = JogosEliteModule(self.telegram_client, self.api_client)
-            logger.info("✅ Módulo Elite habilitado")
+        if Config.ELITE_ENABLED:
+            try:
+                self.modules['elite'] = JogosEliteModule(self.telegram_client, self.api_client)
+                logger.info("✅ Módulo Elite inicializado")
+            except Exception as e:
+                logger.error(f"❌ Erro ao inicializar módulo Elite: {e}")
         
-        if enabled_modules.get('regressao', {}).get('enabled'):
-            self.modules['regressao'] = RegressaoMediaModule(self.telegram_client, self.api_client)
-            logger.info("✅ Módulo Regressão habilitado")
+        if Config.REGRESSAO_ENABLED:
+            try:
+                self.modules['regressao'] = RegressaoMediaModule(self.telegram_client, self.api_client)
+                logger.info("✅ Módulo Regressão inicializado")
+            except Exception as e:
+                logger.error(f"❌ Erro ao inicializar módulo Regressão: {e}")
         
-        if enabled_modules.get('campeonatos', {}).get('enabled'):
-            self.modules['campeonatos'] = CampeonatosPadraoModule(self.telegram_client, self.api_client)
-            logger.info("✅ Módulo Campeonatos habilitado")
+        logger.info("⚠️ Módulo Campeonatos desativado temporariamente para economia de API")
         
-        self.web_server = WebServer(self.modules)
-        logger.info(f"📦 Bot inicializado com {len(self.modules)} módulos")
+        # Inicializar scheduler
+        self.scheduler = AsyncIOScheduler(timezone="UTC")
+        self._setup_scheduler()
+        
+        logger.info(f"📦 Módulos ativos: {list(self.modules.keys())}")
     
-    def setup_jobs(self):
-        """Configura jobs do scheduler com execução imediata para testes"""
-        logger.info("⏰ Configurando jobs...")
+    def _setup_scheduler(self):
+        """Configura o agendamento dos módulos - VERSÃO OTIMIZADA"""
         
-        # Job Elite - executar imediatamente + a cada 24h
-        if 'elite' in self.modules:
-            self.scheduler.add_interval_job(
+        # Elite: 1x por dia às 08:00 Lisboa (07:00 UTC)
+        if Config.ELITE_ENABLED and 'elite' in self.modules:
+            self.scheduler.add_job(
                 self.modules['elite'].execute,
-                Config.ELITE_INTERVAL_HOURS * 60,  # converter para minutos
-                'job_elite',
-                run_immediately=True  # EXECUÇÃO IMEDIATA
+                'cron',
+                hour=7,
+                minute=0,
+                id='elite_daily',
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=3600
             )
+            logger.info("⏰ Elite agendado: 1x/dia às 08:00 Lisboa (07:00 UTC)")
         
-        # Job Regressão - executar imediatamente + a cada 30min
-        if 'regressao' in self.modules:
-            self.scheduler.add_interval_job(
+        # Regressão: 1x por dia às 10:00 Lisboa (09:00 UTC)
+        if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+            self.scheduler.add_job(
                 self.modules['regressao'].execute,
-                Config.REGRESSAO_INTERVAL_MINUTES,
-                'job_regressao',
-                run_immediately=True  # EXECUÇÃO IMEDIATA
+                'cron',
+                hour=9,
+                minute=0,
+                id='regressao_daily',
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=3600
             )
+            logger.info("⏰ Regressão agendado: 1x/dia às 10:00 Lisboa (09:00 UTC)")
         
-        # Jobs Campeonatos permanecem nos horários fixos
-        if 'campeonatos' in self.modules:
-            self.scheduler.add_cron_job(
-                self.modules['campeonatos'].execute,
-                9, 0, 'job_campeonatos_manha'
-            )
-            self.scheduler.add_cron_job(
-                self.modules['campeonatos'].execute,
-                18, 0, 'job_campeonatos_tarde'
-            )
-    
-    async def start(self):
-        """Inicia o bot consolidado com tratamento robusto de erros"""
-        logger.info("🚀 Iniciando Bot Futebol Consolidado")
+        # Monitor API: 2x por dia
+        self.scheduler.add_job(
+            self.log_api_usage,
+            'cron',
+            hour='8,20',
+            minute=30,
+            id='api_monitor'
+        )
+        logger.info("⏰ Monitor API agendado: 2x/dia (08:30 e 20:30 UTC)")
         
+        # Keep-alive: 30 min
+        self.scheduler.add_job(
+            keep_alive, 
+            'interval', 
+            minutes=30,
+            id='keep_alive'
+        )
+        logger.info("⏰ Keep-alive agendado: a cada 30 minutos")
+
+    async def log_api_usage(self):
+        """Monitoriza e reporta uso da API"""
         try:
-            # Verificar conexão Telegram
-            connected = await self.telegram_client.verify_connection()
-            if not connected:
-                logger.error("❌ Falha na conexão Telegram")
-                return
-            logger.info("✅ Conexão Telegram verificada")
+            stats = self.api_client.get_monthly_usage_stats()
             
-            # Iniciar serviços
-            logger.info("🌐 Iniciando servidor web...")
-            await self.web_server.start_server()
-            logger.info("✅ Servidor web iniciado")
+            if stats['percentage_used'] < 50:
+                status_emoji = "🟢"
+                status_text = "OK"
+            elif stats['percentage_used'] < 75:
+                status_emoji = "🟡"
+                status_text = "ATENÇÃO"
+            elif stats['percentage_used'] < 90:
+                status_emoji = "🟠"
+                status_text = "CUIDADO"
+            else:
+                status_emoji = "🔴"
+                status_text = "CRÍTICO"
             
-            logger.info("⏰ Configurando jobs...")
-            self.setup_jobs()
-            logger.info("✅ Jobs configurados")
+            message = f"""{status_emoji} **Relatório de API**
+
+📊 **Usado:** {stats['used']}/{stats['limit']} ({stats['percentage_used']}%)
+⚡ **Restante:** {stats['remaining']} requisições
+📅 **Reset:** Dia 1 do próximo mês
+🗓️ **Mês atual:** {stats['month']}
+
+💡 **Status:** {status_text}
+🔧 **Modo:** Economia ativado (1x/dia por módulo)"""
             
-            logger.info("📅 Iniciando scheduler...")
+            await self.telegram_client.send_admin_message(message)
+            logger.info(f"📊 API Usage: {stats['used']}/{stats['limit']} ({stats['percentage_used']}%) - {status_text}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro no monitor de API: {e}")
+
+    async def send_startup_message(self):
+        """Envia mensagem de inicialização"""
+        try:
+            api_stats = self.api_client.get_monthly_usage_stats()
+            
+            startup_message = f"""🚀 **BOT FUTEBOL CONSOLIDADO INICIADO**
+
+🔧 **MODO ECONOMIA ATIVADO**
+📊 Módulos ativos: {len(self.modules)}
+⏰ Jobs agendados: {len(self.scheduler.get_jobs())}
+
+📈 **Módulos:**
+""" + (f"✅ Elite: 1x/dia às 08:00 Lisboa\n" if 'elite' in self.modules else "") + \
+(f"✅ Regressão: 1x/dia às 10:00 Lisboa\n" if 'regressao' in self.modules else "") + \
+f"❌ Campeonatos: Desativado (economia)" + f"""
+
+🔧 **API Status:**
+📊 Usado: {api_stats['used']}/{api_stats['limit']} ({api_stats['percentage_used']}%)
+⚠️ Restante: {api_stats['remaining']} requests
+📅 Mês: {api_stats['month']}
+
+💡 Otimização implementada para trabalhar dentro do limite gratuito
+⏰ {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC"""
+            
+            await self.telegram_client.send_admin_message(startup_message)
+            logger.info("📨 Mensagem de startup enviada")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao enviar mensagem de startup: {e}")
+
+    async def start(self):
+        """Inicia o bot"""
+        try:
             self.scheduler.start()
-            logger.info("✅ Scheduler iniciado")
+            logger.info("⏰ Scheduler iniciado")
             
-            logger.info("🔄 Iniciando keep-alive...")
-            self.keep_alive_task = asyncio.create_task(self.keep_alive.start())
-            logger.info("✅ Keep-Alive iniciado - serviço permanecerá ativo 24/7")
+            await self.send_startup_message()
+            await keep_alive()
             
-            # Enviar mensagem de startup
-            if Config.ADMIN_CHAT_ID:
-                modules_list = "\n".join([f"  • {name.title()}" for name in self.modules.keys()]) or "  • (nenhum módulo ativo)"
-                startup_msg = f"""🚀 <b>Bot Consolidado Iniciado</b>
-
-📦 <b>Módulos:</b> {len(self.modules)}
-{modules_list}
-
-⏰ <b>Jobs:</b> {len(self.scheduler.jobs)}
-🌐 <b>Porta:</b> {Config.PORT}
-🔄 <b>Keep-Alive:</b> Ativo (anti-sleep)
-
-✅ <b>Sistema funcionando 24/7!</b>
-🎯 Aguarde os alertas automáticos nos horários programados."""
-                
-                await self.telegram_client.send_message(Config.ADMIN_CHAT_ID, startup_msg)
-                logger.info("📨 Mensagem de startup enviada")
-            
-            self.running = True
             logger.info("✅ Bot iniciado com sucesso!")
-            logger.info(f"📦 Módulos ativos: {list(self.modules.keys())}")
-            logger.info(f"⏰ Jobs agendados: {len(self.scheduler.jobs)}")
-            
-            # Loop principal
             logger.info("🔄 Entrando no loop principal...")
-            while self.running:
+            
+            while True:
                 await asyncio.sleep(60)
                 
+        except KeyboardInterrupt:
+            logger.info("🛑 Interrupção do usuário detectada")
         except Exception as e:
-            logger.error(f"❌ Erro crítico: {e}", exc_info=True)
-            if Config.ADMIN_CHAT_ID:
-                await self.telegram_client.send_admin_message(f"Erro crítico: {e}")
+            logger.error(f"💥 Erro crítico: {e}")
+            await self.telegram_client.send_admin_message(f"💥 Erro crítico no bot: {e}")
         finally:
-            await self.stop()
-    
-    async def stop(self):
-        """Para o bot com shutdown gracioso"""
-        logger.info("🛑 Parando bot consolidado")
-        self.running = False
+            await self.shutdown()
+
+    async def shutdown(self):
+        """Encerra o bot graciosamente"""
+        logger.info("🛑 Encerrando bot...")
         
-        try:
-            # Parar keep-alive
-            if self.keep_alive:
-                self.keep_alive.stop()
-            
-            # Cancelar task do keep-alive
-            if self.keep_alive_task and not self.keep_alive_task.done():
-                self.keep_alive_task.cancel()
-                try:
-                    await self.keep_alive_task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Parar scheduler
-            self.scheduler.shutdown()
-            
-            # Notificar admin
-            if Config.ADMIN_CHAT_ID:
-                await self.telegram_client.send_message(
-                    Config.ADMIN_CHAT_ID, "🛑 Bot Consolidado parado"
-                )
-                
-        except Exception as e:
-            logger.error(f"Erro durante shutdown: {e}")
+        if self.scheduler.running:
+            self.scheduler.shutdown(wait=True)
+            logger.info("⏰ Scheduler encerrado")
+        
+        await self.telegram_client.send_admin_message("🛑 Bot encerrado")
+        logger.info("👋 Bot encerrado com sucesso")
 
 async def main():
     """Função principal"""
-    try:
-        # Setup logging
-        setup_logging()
-        
-        # Validar configuração
-        Config.validate()
-        Config.print_summary()
-        
-        # Criar e iniciar bot
-        bot = BotConsolidado()
-        
-        # Signal handlers para shutdown gracioso
-        def signal_handler(signum, frame):
-            logger.info(f"Sinal {signum} recebido")
-            asyncio.create_task(bot.stop())
-        
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-        
-        # Iniciar bot
-        await bot.start()
-        
-    except Exception as e:
-        logger.error(f"💥 Erro crítico: {e}")
-        raise
+    required_vars = ['TELEGRAM_BOT_TOKEN', 'API_FOOTBALL_KEY']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        logger.error(f"❌ Variáveis de ambiente não configuradas: {missing_vars}")
+        return
+    
+    bot = BotConsolidado()
+    await bot.start()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Aplicação interrompida pelo usuário")
+    except Exception as e:
+        logger.error(f"💥 Erro fatal: {e}")
