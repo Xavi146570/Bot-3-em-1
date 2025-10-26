@@ -1,107 +1,201 @@
 import os
-import json
-import logging
-from typing import Dict, Optional, List
-from dotenv import load_dotenv
+from typing import Optional
 
-# Carregar variáveis do .env
-load_dotenv()
+def _getenv_bool(key: str, default: bool = False) -> bool:
+    """Parse robusto de variáveis booleanas"""
+    val = os.getenv(key)
+    if val is None:
+        return default
+    return str(val).strip().lower() in ("1", "true", "t", "yes", "y", "on")
 
-logger = logging.getLogger(__name__)
+def _getenv_int(key: str, default: int) -> int:
+    """Parse robusto de variáveis inteiras"""
+    val = os.getenv(key)
+    if val is None or str(val).strip() == "":
+        return default
+    try:
+        return int(str(val).strip())
+    except ValueError:
+        return default
 
-class ConfigError(Exception):
-    """Exceção customizada para erros de configuração"""
-    pass
+def _getenv_float(key: str, default: float) -> float:
+    """Parse robusto de variáveis float (suporta vírgula decimal)"""
+    val = os.getenv(key)
+    if val is None or str(val).strip() == "":
+        return default
+    try:
+        return float(str(val).strip().replace(",", "."))
+    except ValueError:
+        return default
 
 class Config:
-    """Sistema de configuração centralizado com validação completa"""
+    """
+    Configurações centralizadas do Bot Futebol Consolidado
+    Otimizado para conta paga com quota diária de 2000 requests
+    """
     
-    # ==========================================
-    # TOKENS E APIS (OBRIGATÓRIOS)
-    # ==========================================
-    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    API_FOOTBALL_KEY = os.getenv("API_FOOTBALL_KEY")
-    LIVESCORE_API_KEY = os.getenv("LIVESCORE_API_KEY", API_FOOTBALL_KEY)
+    # ============================================================
+    # 🔑 CREDENCIAIS OBRIGATÓRIAS
+    # ============================================================
     
-    # ==========================================
-    # CHAT IDS
-    # ==========================================
-    CHAT_ID_ELITE = os.getenv("CHAT_ID_ELITE")
-    CHAT_ID_REGRESSAO = os.getenv("CHAT_ID_REGRESSAO")
-    CHAT_ID_CAMPEONATOS = os.getenv("CHAT_ID_CAMPEONATOS")
-    ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+    TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    API_FOOTBALL_KEY: str = os.getenv('API_FOOTBALL_KEY', '')
     
-    # Mapeamento JSON para campeonatos específicos
-    TELEGRAM_CHAT_MAP = os.getenv("TELEGRAM_CHAT_MAP", "{}")
+    # ============================================================
+    # 💬 CONFIGURAÇÕES DO TELEGRAM
+    # ============================================================
     
-    # ==========================================
-    # CONFIGURAÇÕES MÓDULO ELITE
-    # ==========================================
-    ELITE_ENABLED = os.getenv("ELITE_ENABLED", "true").lower() == "true"
-    ELITE_GOALS_THRESHOLD = float(os.getenv("ELITE_GOALS_THRESHOLD", "2.3"))
-    ELITE_INTERVAL_HOURS = int(os.getenv("ELITE_INTERVAL_HOURS", "24"))
+    # Chat IDs - usar o mesmo ID correto para todos por simplicidade
+    CHAT_ID_ELITE: str = os.getenv('CHAT_ID_ELITE', '')
+    CHAT_ID_REGRESSAO: str = os.getenv('CHAT_ID_REGRESSAO', '') or CHAT_ID_ELITE
+    CHAT_ID_CAMPEONATOS: str = os.getenv('CHAT_ID_CAMPEONATOS', '') or CHAT_ID_ELITE
+    ADMIN_CHAT_ID: str = os.getenv('ADMIN_CHAT_ID', '') or CHAT_ID_ELITE
     
-    # ==========================================
-    # CONFIGURAÇÕES MÓDULO REGRESSÃO
-    # ==========================================
-    REGRESSAO_ENABLED = os.getenv("REGRESSAO_ENABLED", "true").lower() == "true"
-    MAX_LAST_MATCH_AGE_DAYS = int(os.getenv("MAX_LAST_MATCH_AGE_DAYS", "10"))
-    REGRESSAO_INTERVAL_MINUTES = int(os.getenv("REGRESSAO_INTERVAL_MINUTES", "30"))
-    REGRESSAO_ACTIVE_HOURS_START = int(os.getenv("REGRESSAO_ACTIVE_HOURS_START", "8"))
-    REGRESSAO_ACTIVE_HOURS_END = int(os.getenv("REGRESSAO_ACTIVE_HOURS_END", "23"))
+    # ============================================================
+    # 🔧 MÓDULOS HABILITADOS
+    # ============================================================
     
-    # ==========================================
-    # CONFIGURAÇÕES MÓDULO CAMPEONATOS
-    # ==========================================
-    CAMPEONATOS_ENABLED = os.getenv("CAMPEONATOS_ENABLED", "true").lower() == "true"
-    ENABLE_REAL_LEAGUE_STATS = os.getenv("ENABLE_REAL_LEAGUE_STATS", "true").lower() == "true"
-    ENABLE_HT_ANALYSIS = os.getenv("ENABLE_HT_ANALYSIS", "true").lower() == "true"
-    SHOW_PEAK_MINUTES = os.getenv("SHOW_PEAK_MINUTES", "true").lower() == "true"
-    SHOW_LEAGUE_STATS = os.getenv("SHOW_LEAGUE_STATS", "true").lower() == "true"
+    ELITE_ENABLED: bool = _getenv_bool('ELITE_ENABLED', True)
+    REGRESSAO_ENABLED: bool = _getenv_bool('REGRESSAO_ENABLED', True)
+    CAMPEONATOS_ENABLED: bool = _getenv_bool('CAMPEONATOS_ENABLED', True)
     
-    # ==========================================
-    # CONFIGURAÇÕES TÉCNICAS
-    # ==========================================
-    PORT = int(os.getenv("PORT", "8080"))
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-    MAX_API_REQUESTS = int(os.getenv("MAX_API_REQUESTS", "200"))
-    API_REQUEST_DELAY = float(os.getenv("API_REQUEST_DELAY", "0.7"))
+    # ============================================================
+    # 🌟 CONFIGURAÇÕES DO MÓDULO ELITE
+    # ============================================================
     
-    # Rate limiting Telegram
-    TELEGRAM_RATE_LIMIT_CALLS = int(os.getenv("TELEGRAM_RATE_LIMIT_CALLS", "20"))
-    TELEGRAM_RATE_LIMIT_WINDOW = int(os.getenv("TELEGRAM_RATE_LIMIT_WINDOW", "60"))
+    # Threshold mínimo de gols por jogo para considerar "elite"
+    ELITE_GOALS_THRESHOLD: float = _getenv_float('ELITE_GOALS_THRESHOLD', 2.3)
     
-    # Desenvolvimento e Debug
-    DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
-    DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
+    # Quantos dias à frente procurar (1 = apenas hoje)
+    ELITE_DAYS_AHEAD: int = _getenv_int('ELITE_DAYS_AHEAD', 1)
+    
+    # ============================================================
+    # 📈 CONFIGURAÇÕES DO MÓDULO REGRESSÃO À MÉDIA
+    # ============================================================
+    
+    # Horário ativo em Lisboa (24h format)
+    REGRESSAO_ACTIVE_HOURS_START: int = _getenv_int('REGRESSAO_ACTIVE_HOURS_START', 8)
+    REGRESSAO_ACTIVE_HOURS_END: int = _getenv_int('REGRESSAO_ACTIVE_HOURS_END', 23)
+    
+    # Idade máxima do último jogo para considerar na análise (dias)
+    MAX_LAST_MATCH_AGE_DAYS: int = _getenv_int('MAX_LAST_MATCH_AGE_DAYS', 10)
+    
+    # ============================================================
+    # 🏆 CONFIGURAÇÕES DO MÓDULO CAMPEONATOS
+    # ============================================================
+    
+    # Confiança mínima para enviar alerta (1-4)
+    CAMPEONATOS_MIN_CONFIDENCE: int = _getenv_int('CAMPEONATOS_MIN_CONFIDENCE', 2)
+    
+    # ============================================================
+    # 🔧 CONFIGURAÇÕES DA API
+    # ============================================================
+    
+    # Limite diário de requests para este bot (de 7500 totais da conta)
+    API_DAILY_LIMIT: int = _getenv_int('API_DAILY_LIMIT', 2000)
+    
+    # Threshold para avisos (75% do limite)
+    API_WARNING_THRESHOLD: float = _getenv_float('API_WARNING_THRESHOLD', 0.75)
+    
+    # Threshold para bloqueio preventivo (95% do limite)
+    API_BLOCK_THRESHOLD: float = _getenv_float('API_BLOCK_THRESHOLD', 0.95)
+    
+    # Timeout para requests HTTP (segundos)
+    API_TIMEOUT: int = _getenv_int('API_TIMEOUT', 30)
+    
+    # ============================================================
+    # 🌐 CONFIGURAÇÕES DO SERVIDOR
+    # ============================================================
+    
+    # Porta do servidor web (Render define automaticamente)
+    PORT: int = _getenv_int('PORT', 8080)
+    
+    # Modo debug
+    DEBUG: bool = _getenv_bool('DEBUG', False)
+    
+    # Ambiente (production, development, test)
+    ENVIRONMENT: str = os.getenv('ENVIRONMENT', 'production')
+    
+    # ============================================================
+    # 📊 CONFIGURAÇÕES DE LOGGING
+    # ============================================================
+    
+    # Nível de logging
+    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO').upper()
+    
+    # ============================================================
+    # ⏰ HORÁRIOS DE EXECUÇÃO OTIMIZADOS
+    # ============================================================
+    
+    # Elite: 4 execuções diárias (horas UTC)
+    ELITE_EXECUTION_HOURS: list = [
+        int(x.strip()) for x in os.getenv('ELITE_EXECUTION_HOURS', '7,11,15,19').split(',')
+    ]
+    
+    # Regressão: 6 execuções diárias (horas UTC)
+    REGRESSAO_EXECUTION_HOURS: list = [
+        int(x.strip()) for x in os.getenv('REGRESSAO_EXECUTION_HOURS', '8,10,12,14,17,20').split(',')
+    ]
+    
+    # Monitor API: 3 execuções diárias (horas UTC)
+    API_MONITOR_HOURS: list = [
+        int(x.strip()) for x in os.getenv('API_MONITOR_HOURS', '8,14,20').split(',')
+    ]
+    
+    # ============================================================
+    # 🧪 CONFIGURAÇÕES DE TESTE
+    # ============================================================
+    
+    # Ativar testes imediatos no startup
+    ENABLE_IMMEDIATE_TESTS: bool = _getenv_bool('ENABLE_IMMEDIATE_TESTS', True)
+    
+    # Delay para testes imediatos (minutos)
+    TEST_DELAY_ELITE: int = _getenv_int('TEST_DELAY_ELITE', 2)
+    TEST_DELAY_REGRESSAO: int = _getenv_int('TEST_DELAY_REGRESSAO', 4)
+    
+    # Modo dry-run (não envia mensagens reais)
+    DRY_RUN: bool = _getenv_bool('DRY_RUN', False)
+    
+    # ============================================================
+    # 📱 CONFIGURAÇÕES DE NOTIFICAÇÕES
+    # ============================================================
+    
+    # Formato de data para mensagens
+    DATE_FORMAT: str = os.getenv('DATE_FORMAT', '%d/%m/%Y')
+    TIME_FORMAT: str = os.getenv('TIME_FORMAT', '%H:%M')
+    DATETIME_FORMAT: str = f"{DATE_FORMAT} às {TIME_FORMAT}"
+    
+    # ============================================================
+    # 📊 MÉTODOS DE UTILIDADE
+    # ============================================================
     
     @classmethod
-    def validate(cls):
-        """Valida todas as configurações obrigatórias"""
+    def validate(cls) -> bool:
+        """Valida se todas as configurações obrigatórias estão presentes e corretas"""
         errors = []
-        warnings = []
         
-        # ===== VALIDAÇÕES OBRIGATÓRIAS =====
+        # Verificar credenciais obrigatórias
         if not cls.TELEGRAM_BOT_TOKEN:
-            errors.append("TELEGRAM_BOT_TOKEN é obrigatório")
+            errors.append("TELEGRAM_BOT_TOKEN não configurado")
         
         if not cls.API_FOOTBALL_KEY:
-            errors.append("API_FOOTBALL_KEY é obrigatório")
+            errors.append("API_FOOTBALL_KEY não configurado")
         
-        # ===== VALIDAÇÃO DE CHATS =====
-        chat_ids = [cls.CHAT_ID_ELITE, cls.CHAT_ID_REGRESSAO, cls.CHAT_ID_CAMPEONATOS]
-        valid_chats = [chat for chat in chat_ids if chat and chat.strip()]
-        chat_map = cls.get_chat_map()
+        if not cls.CHAT_ID_ELITE:
+            errors.append("CHAT_ID_ELITE não configurado")
         
-        if not valid_chats and not chat_map:
-            errors.append("Configure pelo menos um CHAT_ID ou TELEGRAM_CHAT_MAP")
+        # Verificar valores numéricos
+        if cls.API_DAILY_LIMIT <= 0:
+            errors.append("API_DAILY_LIMIT deve ser maior que 0")
         
-        # ===== VALIDAÇÕES DE VALORES =====
-        if not (0 <= cls.ELITE_GOALS_THRESHOLD <= 10):
-            errors.append("ELITE_GOALS_THRESHOLD deve estar entre 0 e 10")
+        if not (0 <= cls.API_WARNING_THRESHOLD <= 1):
+            errors.append("API_WARNING_THRESHOLD deve estar entre 0 e 1")
         
-        if not (1 <= cls.MAX_LAST_MATCH_AGE_DAYS <= 30):
-            errors.append("MAX_LAST_MATCH_AGE_DAYS deve estar entre 1 e 30")
+        if not (0 <= cls.API_BLOCK_THRESHOLD <= 1):
+            errors.append("API_BLOCK_THRESHOLD deve estar entre 0 e 1")
+        
+        if cls.API_WARNING_THRESHOLD >= cls.API_BLOCK_THRESHOLD:
+            errors.append("API_WARNING_THRESHOLD deve ser menor que API_BLOCK_THRESHOLD")
         
         if not (0 <= cls.REGRESSAO_ACTIVE_HOURS_START <= 23):
             errors.append("REGRESSAO_ACTIVE_HOURS_START deve estar entre 0 e 23")
@@ -109,142 +203,64 @@ class Config:
         if not (0 <= cls.REGRESSAO_ACTIVE_HOURS_END <= 23):
             errors.append("REGRESSAO_ACTIVE_HOURS_END deve estar entre 0 e 23")
         
-        if cls.REGRESSAO_ACTIVE_HOURS_START >= cls.REGRESSAO_ACTIVE_HOURS_END:
-            errors.append("REGRESSAO_ACTIVE_HOURS_START deve ser menor que END")
+        if cls.ELITE_GOALS_THRESHOLD <= 0:
+            errors.append("ELITE_GOALS_THRESHOLD deve ser maior que 0")
         
-        # ===== VALIDAÇÃO DO CHAT MAP =====
-        try:
-            cls.get_chat_map()
-        except json.JSONDecodeError:
-            errors.append("TELEGRAM_CHAT_MAP deve ser um JSON válido")
-        
-        # ===== LANÇAR ERROS =====
+        # Reportar erros se existirem
         if errors:
-            error_msg = "❌ ERROS DE CONFIGURAÇÃO:\n" + "\n".join([f"  • {error}" for error in errors])
-            if warnings:
-                error_msg += "\n\n⚠️ AVISOS:\n" + "\n".join([f"  • {warning}" for warning in warnings])
-            raise ConfigError(error_msg)
+            for error in errors:
+                print(f"❌ Erro de configuração: {error}")
+            return False
         
-        if warnings:
-            warning_msg = "⚠️ AVISOS:\n" + "\n".join([f"  • {warning}" for warning in warnings])
-            print(warning_msg)
-    
-    @classmethod
-    def get_chat_map(cls) -> Dict[str, str]:
-        """Retorna mapeamento de chats por liga"""
-        try:
-            chat_map = json.loads(cls.TELEGRAM_CHAT_MAP)
-            return chat_map if isinstance(chat_map, dict) else {}
-        except:
-            return {}
-    
-    @classmethod
-    def get_enabled_modules(cls) -> Dict[str, Dict]:
-        """Retorna módulos habilitados com suas configurações"""
-        modules = {}
-        
-        if cls.ELITE_ENABLED and cls.CHAT_ID_ELITE:
-            modules["elite"] = {
-                "enabled": True,
-                "chat_id": cls.CHAT_ID_ELITE,
-                "threshold": cls.ELITE_GOALS_THRESHOLD,
-                "interval_hours": cls.ELITE_INTERVAL_HOURS
-            }
-        
-        if cls.REGRESSAO_ENABLED and cls.CHAT_ID_REGRESSAO:
-            modules["regressao"] = {
-                "enabled": True,
-                "chat_id": cls.CHAT_ID_REGRESSAO,
-                "max_days": cls.MAX_LAST_MATCH_AGE_DAYS,
-                "interval_minutes": cls.REGRESSAO_INTERVAL_MINUTES,
-                "active_hours": f"{cls.REGRESSAO_ACTIVE_HOURS_START}-{cls.REGRESSAO_ACTIVE_HOURS_END}"
-            }
-        
-        if cls.CAMPEONATOS_ENABLED and (cls.CHAT_ID_CAMPEONATOS or cls.get_chat_map()):
-            modules["campeonatos"] = {
-                "enabled": True,
-                "chat_id": cls.CHAT_ID_CAMPEONATOS,
-                "chat_map": cls.get_chat_map(),
-                "real_stats": cls.ENABLE_REAL_LEAGUE_STATS,
-                "ht_analysis": cls.ENABLE_HT_ANALYSIS
-            }
-        
-        return modules
-    
-    @classmethod
-    def print_summary(cls):
-        """Imprime resumo detalhado da configuração"""
-        enabled_modules = cls.get_enabled_modules()
-        
-        print("\n" + "="*60)
-        print("🚀 BOT FUTEBOL CONSOLIDADO - CONFIGURAÇÃO")
-        print("="*60)
-        
-        print("🔑 CREDENCIAIS:")
-        print(f"   📱 Telegram Token: {'✅ Configurado' if cls.TELEGRAM_BOT_TOKEN else '❌ Faltando'}")
-        print(f"   ⚽ API Football: {'✅ Configurado' if cls.API_FOOTBALL_KEY else '❌ Faltando'}")
-        
-        print(f"\n📦 MÓDULOS HABILITADOS ({len(enabled_modules)}):")
-        if not enabled_modules:
-            print("   ❌ Nenhum módulo habilitado")
-        else:
-            for name, config in enabled_modules.items():
-                print(f"   ✅ {name.upper()}")
-                if name == "elite":
-                    print(f"      🎯 Threshold: {config['threshold']} gols")
-                    print(f"      ⏰ Intervalo: {config['interval_hours']}h")
-                elif name == "regressao":
-                    print(f"      📅 Max dias: {config['max_days']}")
-                    print(f"      ⏰ Intervalo: {config['interval_minutes']}min")
-                    print(f"      🕐 Horário ativo: {config['active_hours']}")
-                elif name == "campeonatos":
-                    print(f"      📊 Stats reais: {'✅' if config['real_stats'] else '❌'}")
-                    print(f"      🕐 Análise HT: {'✅' if config['ht_analysis'] else '❌'}")
-        
-        print(f"\n⚙️ CONFIGURAÇÕES TÉCNICAS:")
-        print(f"   🌐 Porta: {cls.PORT}")
-        print(f"   📈 Max API Requests: {cls.MAX_API_REQUESTS}")
-        print(f"   ⏱️ API Delay: {cls.API_REQUEST_DELAY}s")
-        print(f"   🔧 Debug: {'✅' if cls.DEBUG_MODE else '❌'}")
-        print(f"   🧪 Dry Run: {'✅' if cls.DRY_RUN else '❌'}")
-        
-        print("="*60)
-
-def setup_logging():
-    """Configura sistema de logging"""
-    logging.basicConfig(
-        level=getattr(logging, Config.LOG_LEVEL),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    # Reduzir verbosidade de bibliotecas externas
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('telegram').setLevel(logging.WARNING)
-
-def test_config():
-    """Função de teste da configuração"""
-    try:
-        print("🔍 Testando configuração...")
-        Config.validate()
-        Config.print_summary()
-        print("\n✅ CONFIGURAÇÃO VÁLIDA!")
         return True
-    except ConfigError as e:
-        print(f"\n{e}")
-        return False
-    except Exception as e:
-        print(f"\n💥 ERRO INESPERADO: {e}")
-        return False
-
-if __name__ == "__main__":
-    setup_logging()
-    success = test_config()
     
-    if not success:
-        print("\n📝 DICAS PARA CORRIGIR:")
-        print("1. Copie .env.example para .env")
-        print("2. Edite .env com suas credenciais reais")
-        print("3. Execute novamente: python config.py")
-        exit(1)
+    @classmethod
+    def print_startup_info(cls):
+        """Imprime informações de configuração no startup"""
+        print("=" * 60)
+        print("🚀 BOT FUTEBOL CONSOLIDADO - CONFIGURAÇÃO OTIMIZADA")
+        print("=" * 60)
+        print("🔑 CREDENCIAIS:")
+        print(f"   📱 Telegram Token: {'✅ Configurado' if cls.TELEGRAM_BOT_TOKEN else '❌ Não configurado'}")
+        print(f"   ⚽ API Football: {'✅ Configurado' if cls.API_FOOTBALL_KEY else '❌ Não configurado'}")
+        print("📦 MÓDULOS HABILITADOS:")
+        print(f"   {'✅' if cls.ELITE_ENABLED else '❌'} ELITE ({len(cls.ELITE_EXECUTION_HOURS)}x/dia)")
+        print(f"   {'✅' if cls.REGRESSAO_ENABLED else '❌'} REGRESSÃO ({len(cls.REGRESSAO_EXECUTION_HOURS)}x/dia)")
+        print(f"   {'✅' if cls.CAMPEONATOS_ENABLED else '❌'} CAMPEONATOS (1x/dia)")
+        print("⚙️ CONFIGURAÇÕES TÉCNICAS:")
+        print(f"   🌐 Porta: {cls.PORT}")
+        print(f"   📈 Limite API: {cls.API_DAILY_LIMIT} requests/dia")
+        print(f"   ⚠️ Aviso em: {cls.API_WARNING_THRESHOLD:.0%}")
+        print(f"   🚫 Bloqueio em: {cls.API_BLOCK_THRESHOLD:.0%}")
+        print(f"   🔧 Ambiente: {cls.ENVIRONMENT}")
+        print(f"   🧪 Testes imediatos: {'✅' if cls.ENABLE_IMMEDIATE_TESTS else '❌'}")
+        print(f"   🔇 Modo dry-run: {'✅' if cls.DRY_RUN else '❌'}")
+        print("=" * 60)
+    
+    @classmethod
+    def get_summary(cls) -> dict:
+        """Retorna resumo das configurações principais para logs"""
+        return {
+            'modules': {
+                'elite': cls.ELITE_ENABLED,
+                'regressao': cls.REGRESSAO_ENABLED,
+                'campeonatos': cls.CAMPEONATOS_ENABLED
+            },
+            'api': {
+                'daily_limit': cls.API_DAILY_LIMIT,
+                'warning_threshold': cls.API_WARNING_THRESHOLD,
+                'block_threshold': cls.API_BLOCK_THRESHOLD
+            },
+            'execution_hours': {
+                'elite': cls.ELITE_EXECUTION_HOURS,
+                'regressao': cls.REGRESSAO_EXECUTION_HOURS,
+                'api_monitor': cls.API_MONITOR_HOURS
+            },
+            'environment': cls.ENVIRONMENT,
+            'debug': cls.DEBUG,
+            'dry_run': cls.DRY_RUN
+        }
 
+# Validar configurações automaticamente ao importar
+if not Config.validate():
+    raise RuntimeError("❌ Configuração inválida - verifique as variáveis de ambiente")
