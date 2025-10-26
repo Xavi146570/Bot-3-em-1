@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import Config
 from telegram_client import TelegramClient
@@ -11,7 +11,7 @@ from utils.keep_alive import keep_alive
 from modules.jogos_elite import JogosEliteModule
 from modules.regressao_media import RegressaoMediaModule
 
-# Filtro para censurar tokens nos logs (COMPLETO)
+# Filtro para censurar tokens nos logs
 class RedactSecretsFilter(logging.Filter):
     def __init__(self):
         super().__init__()
@@ -27,7 +27,7 @@ class RedactSecretsFilter(logging.Filter):
         record.args = ()
         return True
 
-# Configurar logging ANTES de qualquer uso
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -45,21 +45,21 @@ logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-# Variável global para acesso ao bot (APÓS configuração de logging)
+# Variável global para acesso ao bot
 bot_instance = None
 
 class BotConsolidado:
-    """Bot de Futebol Consolidado - VERSÃO OTIMIZADA PARA ECONOMIA DE API"""
+    """Bot de Futebol Consolidado - VERSÃO OTIMIZADA PARA 2000 REQUESTS/DIA"""
     
     def __init__(self):
         global bot_instance
-        bot_instance = self  # Permitir acesso global ao bot
+        bot_instance = self
         
-        logger.info("🚀 Iniciando Bot Futebol Consolidado - MODO ECONOMIA")
+        logger.info("🚀 Iniciando Bot Futebol Consolidado - MODO OTIMIZADO")
         
         # Inicializar clientes
         self.telegram_client = TelegramClient(Config.TELEGRAM_BOT_TOKEN)
-        self.api_client = ApiFootballClient(Config.API_FOOTBALL_KEY)
+        self.api_client = ApiFootballClient(Config.API_FOOTBALL_KEY, Config.API_DAILY_LIMIT)
         
         # Inicializar módulos
         self.modules = {}
@@ -78,7 +78,15 @@ class BotConsolidado:
             except Exception as e:
                 logger.error(f"❌ Erro ao inicializar módulo Regressão: {e}")
         
-        logger.info("⚠️ Módulo Campeonatos desativado temporariamente para economia de API")
+        if Config.CAMPEONATOS_ENABLED:
+            try:
+                from modules.campeonatos_padrao import CampeonatosPadraoModule
+                self.modules['campeonatos'] = CampeonatosPadraoModule(self.telegram_client, self.api_client)
+                logger.info("✅ Módulo Campeonatos inicializado")
+            except Exception as e:
+                logger.error(f"❌ Erro ao inicializar módulo Campeonatos: {e}")
+        else:
+            logger.info("⚠️ Módulo Campeonatos desabilitado na configuração")
         
         # Inicializar scheduler
         self.scheduler = AsyncIOScheduler(timezone="UTC")
@@ -87,45 +95,42 @@ class BotConsolidado:
         logger.info(f"📦 Módulos ativos: {list(self.modules.keys())}")
     
     def _setup_scheduler(self):
-    """Configura agendamento otimizado para 2000 requests/dia"""
-    
-    # === EXECUÇÕES ESTRATÉGICAS PARA MÁXIMA COBERTURA ===
-    
-    # Elite: 4x por dia (cobertura completa sem desperdício)
-    if Config.ELITE_ENABLED and 'elite' in self.modules:
-        elite_hours = [7, 11, 15, 19]  # 08:00, 12:00, 16:00, 20:00 Lisboa
-        for i, hour in enumerate(elite_hours):
-            self.scheduler.add_job(
-                self.modules['elite'].execute,
-                'cron',
-                hour=hour,
-                minute=0,
-                id=f'elite_{i+1}',
-                max_instances=1,
-                coalesce=True,
-                misfire_grace_time=3600
-            )
-        logger.info("⏰ Elite agendado: 4x/dia (08:00, 12:00, 16:00, 20:00 Lisboa)")
-    
-    # Regressão: 6x por dia (análise frequente para oportunidades)
-    if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
-        regressao_hours = [8, 10, 12, 14, 17, 20]  # Horários estratégicos
-        for i, hour in enumerate(regressao_hours):
-            self.scheduler.add_job(
-                self.modules['regressao'].execute,
-                'cron',
-                hour=hour,
-                minute=30,  # 30 min após Elite para evitar conflitos
-                id=f'regressao_{i+1}',
-                max_instances=1,
-                coalesce=True,
-                misfire_grace_time=3600
-            )
-        logger.info("⏰ Regressão agendado: 6x/dia (horários otimizados)")
-    
-    # Campeonatos: Re-ativado 1x por dia
-    if hasattr(Config, 'CAMPEONATOS_ENABLED') and Config.CAMPEONATOS_ENABLED:
-        if 'campeonatos' in self.modules:
+        """Configura agendamento otimizado para 2000 requests/dia"""
+        
+        # === EXECUÇÕES ESTRATÉGICAS PARA MÁXIMA COBERTURA ===
+        
+        # Elite: múltiplas execuções por dia
+        if Config.ELITE_ENABLED and 'elite' in self.modules:
+            for i, hour in enumerate(Config.ELITE_EXECUTION_HOURS):
+                self.scheduler.add_job(
+                    self.modules['elite'].execute,
+                    'cron',
+                    hour=hour,
+                    minute=0,
+                    id=f'elite_{i+1}',
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=3600
+                )
+            logger.info(f"⏰ Elite agendado: {len(Config.ELITE_EXECUTION_HOURS)}x/dia (Horários UTC: {Config.ELITE_EXECUTION_HOURS})")
+        
+        # Regressão: múltiplas execuções por dia
+        if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+            for i, hour in enumerate(Config.REGRESSAO_EXECUTION_HOURS):
+                self.scheduler.add_job(
+                    self.modules['regressao'].execute,
+                    'cron',
+                    hour=hour,
+                    minute=30,  # 30 min após Elite para evitar conflitos
+                    id=f'regressao_{i+1}',
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=3600
+                )
+            logger.info(f"⏰ Regressão agendado: {len(Config.REGRESSAO_EXECUTION_HOURS)}x/dia (Horários UTC: {Config.REGRESSAO_EXECUTION_HOURS})")
+        
+        # Campeonatos: 1x por dia
+        if Config.CAMPEONATOS_ENABLED and 'campeonatos' in self.modules:
             self.scheduler.add_job(
                 self.modules['campeonatos'].execute,
                 'cron',
@@ -136,119 +141,129 @@ class BotConsolidado:
                 coalesce=True,
                 misfire_grace_time=3600
             )
-            logger.info("⏰ Campeonatos agendado: 1x/dia às 10:00 Lisboa")
-    
-    # === TESTE IMEDIATO PARA VERIFICAÇÃO ===
-    from datetime import timedelta
-    
-    now_utc = datetime.now(timezone.utc)
-    
-    # Teste Elite em 2 minutos
-    if Config.ELITE_ENABLED and 'elite' in self.modules:
-        test_time = now_utc + timedelta(minutes=2)
+            logger.info("⏰ Campeonatos agendado: 1x/dia às 09:00 UTC")
+        
+        # === TESTES IMEDIATOS PARA VERIFICAÇÃO ===
+        if Config.ENABLE_IMMEDIATE_TESTS:
+            now_utc = datetime.now(timezone.utc)
+            
+            # Teste Elite
+            if Config.ELITE_ENABLED and 'elite' in self.modules:
+                test_time = now_utc + timedelta(minutes=Config.TEST_DELAY_ELITE)
+                self.scheduler.add_job(
+                    self.modules['elite'].execute,
+                    'date',
+                    run_date=test_time,
+                    id='elite_test_now',
+                    max_instances=1
+                )
+                logger.info(f"🧪 TESTE Elite: {test_time.strftime('%H:%M:%S')} UTC")
+            
+            # Teste Regressão
+            if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+                test_time = now_utc + timedelta(minutes=Config.TEST_DELAY_REGRESSAO)
+                self.scheduler.add_job(
+                    self.modules['regressao'].execute,
+                    'date',
+                    run_date=test_time,
+                    id='regressao_test_now',
+                    max_instances=1
+                )
+                logger.info(f"🧪 TESTE Regressão: {test_time.strftime('%H:%M:%S')} UTC")
+        
+        # Monitor API: múltiplas execuções por dia
+        for i, hour in enumerate(Config.API_MONITOR_HOURS):
+            self.scheduler.add_job(
+                self.log_api_usage,
+                'cron',
+                hour=hour,
+                minute=45,
+                id=f'api_monitor_{i+1}',
+                max_instances=1,
+                coalesce=True
+            )
+        logger.info(f"⏰ Monitor API agendado: {len(Config.API_MONITOR_HOURS)}x/dia (Horários UTC: {Config.API_MONITOR_HOURS})")
+        
+        # Keep-alive: 30 min
         self.scheduler.add_job(
-            self.modules['elite'].execute,
-            'date',
-            run_date=test_time,
-            id='elite_test_now',
-            max_instances=1
+            keep_alive, 
+            'interval', 
+            minutes=30,
+            id='keep_alive',
+            max_instances=1,
+            coalesce=True
         )
-        logger.info(f"🧪 TESTE Elite: {test_time.strftime('%H:%M:%S')} UTC")
-    
-    # Teste Regressão em 4 minutos
-    if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
-        test_time = now_utc + timedelta(minutes=4)
-        self.scheduler.add_job(
-            self.modules['regressao'].execute,
-            'date',
-            run_date=test_time,
-            id='regressao_test_now',
-            max_instances=1
-        )
-        logger.info(f"🧪 TESTE Regressão: {test_time.strftime('%H:%M:%S')} UTC")
-    
-    # Monitor API: 3x por dia
-    self.scheduler.add_job(
-        self.log_api_usage,
-        'cron',
-        hour='8,14,20',
-        minute=45,
-        id='api_monitor'
-    )
-    
-    # Keep-alive: 30 min
-    self.scheduler.add_job(
-        keep_alive, 
-        'interval', 
-        minutes=30,
-        id='keep_alive'
-    )
+        logger.info("⏰ Keep-alive agendado: a cada 30 minutos")
 
-async def log_api_usage(self):
-    """Monitor API com informações da conta"""
-    try:
-        stats = self.api_client.get_daily_usage_stats()
-        
-        # Status baseado no uso do bot
-        if stats['bot_percentage'] < 40:
-            status_emoji = "🟢"
-            status_text = "EXCELENTE"
-        elif stats['bot_percentage'] < 60:
-            status_emoji = "🟡" 
-            status_text = "BOM"
-        elif stats['bot_percentage'] < 80:
-            status_emoji = "🟠"
-            status_text = "ATENÇÃO"
-        else:
-            status_emoji = "🔴"
-            status_text = "CRÍTICO"
-        
-        # Informações da conta (se disponíveis)
-        account_info = ""
-        if stats['account_remaining'] is not None:
-            account_info = f"\n🏦 **Conta:** {stats['account_remaining']}/{stats['account_limit']} restantes"
-        
-        message = f"""{status_emoji} **Relatório API Diário**
+    async def log_api_usage(self):
+        """Monitor API com informações detalhadas da quota diária"""
+        try:
+            stats = self.api_client.get_daily_usage_stats()
+            
+            # Status baseado no uso do bot
+            if stats['bot_percentage'] < 40:
+                status_emoji = "🟢"
+                status_text = "EXCELENTE"
+            elif stats['bot_percentage'] < 60:
+                status_emoji = "🟡" 
+                status_text = "BOM"
+            elif stats['bot_percentage'] < 80:
+                status_emoji = "🟠"
+                status_text = "ATENÇÃO"
+            else:
+                status_emoji = "🔴"
+                status_text = "CRÍTICO"
+            
+            # Informações da conta (se disponíveis)
+            account_info = ""
+            if stats.get('account_remaining') is not None:
+                account_info = f"\n🏦 **Conta:** {stats['account_remaining']}/{stats['account_limit']} restantes"
+            
+            message = f"""{status_emoji} **Relatório API Diário**
 
 🤖 **Bot:** {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%)
-⚡ **Restante Bot:** {stats['bot_remaining']} requests{account_info}
+⚡ **Restante:** {stats['bot_remaining']} requests{account_info}
 📅 **Reset:** {stats['reset_time']}
 🗓️ **Data:** {stats['date']}
 
 💡 **Status:** {status_text}
-🎯 **Estratégia:** Elite 4x + Regressão 6x + Campeonatos 1x/dia
-📊 **Quota Alocada:** 2000/7500 requests totais da conta"""
-        
-        await self.telegram_client.send_admin_message(message)
-        logger.info(f"📊 API Usage: {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%) - {status_text}")
-        
-    except Exception as e:
-        logger.error(f"❌ Erro no monitor de API: {e}")
-
+🎯 **Estratégia:** Elite {len(Config.ELITE_EXECUTION_HOURS)}x + Regressão {len(Config.REGRESSAO_EXECUTION_HOURS)}x + Campeonatos 1x/dia
+📊 **Quota Alocada:** {Config.API_DAILY_LIMIT} requests/dia de 7500 totais"""
+            
+            await self.telegram_client.send_admin_message(message)
+            logger.info(f"📊 API Usage: {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%) - {status_text}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro no monitor de API: {e}")
 
     async def send_startup_message(self):
-        """Envia mensagem de inicialização"""
+        """Envia mensagem de inicialização otimizada"""
         try:
-            api_stats = self.api_client.get_monthly_usage_stats()
+            stats = self.api_client.get_daily_usage_stats()
+            
+            modules_text = ""
+            if 'elite' in self.modules:
+                modules_text += f"✅ Elite: {len(Config.ELITE_EXECUTION_HOURS)}x/dia\n"
+            if 'regressao' in self.modules:
+                modules_text += f"✅ Regressão: {len(Config.REGRESSAO_EXECUTION_HOURS)}x/dia\n"
+            if 'campeonatos' in self.modules:
+                modules_text += f"✅ Campeonatos: 1x/dia\n"
             
             startup_message = f"""🚀 **BOT FUTEBOL CONSOLIDADO INICIADO**
 
-🔧 **MODO ECONOMIA ATIVADO**
+🔧 **MODO OTIMIZADO PARA 2000 REQUESTS/DIA**
 📊 Módulos ativos: {len(self.modules)}
 ⏰ Jobs agendados: {len(self.scheduler.get_jobs())}
 
 📈 **Módulos:**
-""" + (f"✅ Elite: 1x/dia às 08:00 Lisboa\n" if 'elite' in self.modules else "") + \
-(f"✅ Regressão: 1x/dia às 10:00 Lisboa\n" if 'regressao' in self.modules else "") + \
-f"❌ Campeonatos: Desativado (economia)" + f"""
-
+{modules_text}
 🔧 **API Status:**
-📊 Usado: {api_stats['used']}/{api_stats['limit']} ({api_stats['percentage_used']}%)
-⚠️ Restante: {api_stats['remaining']} requests
-📅 Mês: {api_stats['month']}
+📊 Usado hoje: {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%)
+⚠️ Restante: {stats['bot_remaining']} requests
+📅 Data: {stats['date']}
 
-💡 Otimização implementada para trabalhar dentro do limite gratuito
-⏰ {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC"""
+💡 Otimização implementada para trabalhar dentro do limite de {Config.API_DAILY_LIMIT} requests/dia
+⏰ {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"""
             
             await self.telegram_client.send_admin_message(startup_message)
             logger.info("📨 Mensagem de startup enviada")
@@ -257,8 +272,14 @@ f"❌ Campeonatos: Desativado (economia)" + f"""
             logger.error(f"❌ Erro ao enviar mensagem de startup: {e}")
 
     async def start(self):
-        """Inicia o bot"""
+        """Inicia o bot com configurações otimizadas"""
         try:
+            # Testar conexão Telegram
+            telegram_ok = await self.telegram_client.test_connection()
+            if not telegram_ok:
+                logger.error("❌ Falha na conexão com Telegram - verificar token")
+                return
+            
             self.scheduler.start()
             logger.info("⏰ Scheduler iniciado")
             
@@ -297,39 +318,31 @@ f"❌ Campeonatos: Desativado (economia)" + f"""
             logger.warning(f"⚠️ Erro ao parar keep-alive: {e}")
         
         try:
-            await self.telegram_client.send_admin_message("🛑 Bot encerrado")
+            await self.telegram_client.send_admin_message("🛑 Bot encerrado graciosamente")
         except Exception as e:
             logger.warning(f"⚠️ Erro ao enviar mensagem de shutdown: {e}")
         
         logger.info("👋 Bot encerrado com sucesso")
 
 async def main():
-    """Função principal"""
-    # Dashboard de configuração
-    print("=" * 60)
-    print("🚀 BOT FUTEBOL CONSOLIDADO - CONFIGURAÇÃO")
-    print("=" * 60)
-    print("🔑 CREDENCIAIS:")
-    print(f"   📱 Telegram Token: {'✅ Configurado' if Config.TELEGRAM_BOT_TOKEN else '❌ Não configurado'}")
-    print(f"   ⚽ API Football: {'✅ Configurado' if Config.API_FOOTBALL_KEY else '❌ Não configurado'}")
-    print("📦 MÓDULOS HABILITADOS:")
-    print(f"   {'✅' if Config.ELITE_ENABLED else '❌'} ELITE (1x/dia às 08:00 Lisboa)")
-    print(f"   {'✅' if Config.REGRESSAO_ENABLED else '❌'} REGRESSAO (1x/dia às 10:00 Lisboa)")
-    print(f"   ❌ CAMPEONATOS (desativado temporariamente)")
-    print("⚙️ CONFIGURAÇÕES TÉCNICAS:")
-    print(f"   🌐 Porta: {os.getenv('PORT', 8080)}")
-    print(f"   📈 Limite API: 2000 requests/mês")
-    print(f"   🔧 Modo: Economia")
-    print("=" * 60)
+    """Função principal com dashboard de configuração"""
     
-    # Verificar variáveis obrigatórias
-    required_vars = ['TELEGRAM_BOT_TOKEN', 'API_FOOTBALL_KEY']
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    # Dashboard de configuração no console
+    Config.print_startup_info()
+    
+    # Verificar variáveis críticas
+    required_vars = ['TELEGRAM_BOT_TOKEN', 'API_FOOTBALL_KEY', 'CHAT_ID_ELITE']
+    missing_vars = []
+    
+    for var in required_vars:
+        if not getattr(Config, var):
+            missing_vars.append(var)
     
     if missing_vars:
-        logger.error(f"❌ Variáveis de ambiente não configuradas: {missing_vars}")
+        logger.error(f"❌ Variáveis críticas não configuradas: {missing_vars}")
         return
     
+    # Inicializar e executar bot
     bot = BotConsolidado()
     await bot.start()
 
