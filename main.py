@@ -87,88 +87,144 @@ class BotConsolidado:
         logger.info(f"📦 Módulos ativos: {list(self.modules.keys())}")
     
     def _setup_scheduler(self):
-        """Configura o agendamento dos módulos - VERSÃO OTIMIZADA"""
-        
-        # Elite: 1x por dia às 08:00 Lisboa (07:00 UTC)
-        if Config.ELITE_ENABLED and 'elite' in self.modules:
+    """Configura agendamento otimizado para 2000 requests/dia"""
+    
+    # === EXECUÇÕES ESTRATÉGICAS PARA MÁXIMA COBERTURA ===
+    
+    # Elite: 4x por dia (cobertura completa sem desperdício)
+    if Config.ELITE_ENABLED and 'elite' in self.modules:
+        elite_hours = [7, 11, 15, 19]  # 08:00, 12:00, 16:00, 20:00 Lisboa
+        for i, hour in enumerate(elite_hours):
             self.scheduler.add_job(
                 self.modules['elite'].execute,
                 'cron',
-                hour=7,
+                hour=hour,
                 minute=0,
-                id='elite_daily',
+                id=f'elite_{i+1}',
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=3600
             )
-            logger.info("⏰ Elite agendado: 1x/dia às 08:00 Lisboa (07:00 UTC)")
-        
-        # Regressão: 1x por dia às 10:00 Lisboa (09:00 UTC)
-        if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+        logger.info("⏰ Elite agendado: 4x/dia (08:00, 12:00, 16:00, 20:00 Lisboa)")
+    
+    # Regressão: 6x por dia (análise frequente para oportunidades)
+    if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+        regressao_hours = [8, 10, 12, 14, 17, 20]  # Horários estratégicos
+        for i, hour in enumerate(regressao_hours):
             self.scheduler.add_job(
                 self.modules['regressao'].execute,
                 'cron',
-                hour=9,
-                minute=0,
-                id='regressao_daily',
+                hour=hour,
+                minute=30,  # 30 min após Elite para evitar conflitos
+                id=f'regressao_{i+1}',
                 max_instances=1,
                 coalesce=True,
                 misfire_grace_time=3600
             )
-            logger.info("⏰ Regressão agendado: 1x/dia às 10:00 Lisboa (09:00 UTC)")
-        
-        # Monitor API: 2x por dia
+        logger.info("⏰ Regressão agendado: 6x/dia (horários otimizados)")
+    
+    # Campeonatos: Re-ativado 1x por dia
+    if hasattr(Config, 'CAMPEONATOS_ENABLED') and Config.CAMPEONATOS_ENABLED:
+        if 'campeonatos' in self.modules:
+            self.scheduler.add_job(
+                self.modules['campeonatos'].execute,
+                'cron',
+                hour=9,
+                minute=0,
+                id='campeonatos_daily',
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=3600
+            )
+            logger.info("⏰ Campeonatos agendado: 1x/dia às 10:00 Lisboa")
+    
+    # === TESTE IMEDIATO PARA VERIFICAÇÃO ===
+    from datetime import timedelta
+    
+    now_utc = datetime.now(timezone.utc)
+    
+    # Teste Elite em 2 minutos
+    if Config.ELITE_ENABLED and 'elite' in self.modules:
+        test_time = now_utc + timedelta(minutes=2)
         self.scheduler.add_job(
-            self.log_api_usage,
-            'cron',
-            hour='8,20',
-            minute=30,
-            id='api_monitor'
+            self.modules['elite'].execute,
+            'date',
+            run_date=test_time,
+            id='elite_test_now',
+            max_instances=1
         )
-        logger.info("⏰ Monitor API agendado: 2x/dia (08:30 e 20:30 UTC)")
-        
-        # Keep-alive: 30 min
+        logger.info(f"🧪 TESTE Elite: {test_time.strftime('%H:%M:%S')} UTC")
+    
+    # Teste Regressão em 4 minutos
+    if Config.REGRESSAO_ENABLED and 'regressao' in self.modules:
+        test_time = now_utc + timedelta(minutes=4)
         self.scheduler.add_job(
-            keep_alive, 
-            'interval', 
-            minutes=30,
-            id='keep_alive'
+            self.modules['regressao'].execute,
+            'date',
+            run_date=test_time,
+            id='regressao_test_now',
+            max_instances=1
         )
-        logger.info("⏰ Keep-alive agendado: a cada 30 minutos")
+        logger.info(f"🧪 TESTE Regressão: {test_time.strftime('%H:%M:%S')} UTC")
+    
+    # Monitor API: 3x por dia
+    self.scheduler.add_job(
+        self.log_api_usage,
+        'cron',
+        hour='8,14,20',
+        minute=45,
+        id='api_monitor'
+    )
+    
+    # Keep-alive: 30 min
+    self.scheduler.add_job(
+        keep_alive, 
+        'interval', 
+        minutes=30,
+        id='keep_alive'
+    )
 
-    async def log_api_usage(self):
-        """Monitoriza e reporta uso da API"""
-        try:
-            stats = self.api_client.get_monthly_usage_stats()
-            
-            if stats['percentage_used'] < 50:
-                status_emoji = "🟢"
-                status_text = "OK"
-            elif stats['percentage_used'] < 75:
-                status_emoji = "🟡"
-                status_text = "ATENÇÃO"
-            elif stats['percentage_used'] < 90:
-                status_emoji = "🟠"
-                status_text = "CUIDADO"
-            else:
-                status_emoji = "🔴"
-                status_text = "CRÍTICO"
-            
-            message = f"""{status_emoji} **Relatório de API**
+async def log_api_usage(self):
+    """Monitor API com informações da conta"""
+    try:
+        stats = self.api_client.get_daily_usage_stats()
+        
+        # Status baseado no uso do bot
+        if stats['bot_percentage'] < 40:
+            status_emoji = "🟢"
+            status_text = "EXCELENTE"
+        elif stats['bot_percentage'] < 60:
+            status_emoji = "🟡" 
+            status_text = "BOM"
+        elif stats['bot_percentage'] < 80:
+            status_emoji = "🟠"
+            status_text = "ATENÇÃO"
+        else:
+            status_emoji = "🔴"
+            status_text = "CRÍTICO"
+        
+        # Informações da conta (se disponíveis)
+        account_info = ""
+        if stats['account_remaining'] is not None:
+            account_info = f"\n🏦 **Conta:** {stats['account_remaining']}/{stats['account_limit']} restantes"
+        
+        message = f"""{status_emoji} **Relatório API Diário**
 
-📊 **Usado:** {stats['used']}/{stats['limit']} ({stats['percentage_used']}%)
-⚡ **Restante:** {stats['remaining']} requisições
-📅 **Reset:** Dia 1 do próximo mês
-🗓️ **Mês atual:** {stats['month']}
+🤖 **Bot:** {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%)
+⚡ **Restante Bot:** {stats['bot_remaining']} requests{account_info}
+📅 **Reset:** {stats['reset_time']}
+🗓️ **Data:** {stats['date']}
 
 💡 **Status:** {status_text}
-🔧 **Modo:** Economia ativado (1x/dia por módulo)"""
-            
-            await self.telegram_client.send_admin_message(message)
-            logger.info(f"📊 API Usage: {stats['used']}/{stats['limit']} ({stats['percentage_used']}%) - {status_text}")
-            
-        except Exception as e:
-            logger.error(f"❌ Erro no monitor de API: {e}")
+🎯 **Estratégia:** Elite 4x + Regressão 6x + Campeonatos 1x/dia
+📊 **Quota Alocada:** 2000/7500 requests totais da conta"""
+        
+        await self.telegram_client.send_admin_message(message)
+        logger.info(f"📊 API Usage: {stats['bot_used']}/{stats['bot_limit']} ({stats['bot_percentage']}%) - {status_text}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no monitor de API: {e}")
+
 
     async def send_startup_message(self):
         """Envia mensagem de inicialização"""
