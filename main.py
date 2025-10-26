@@ -10,6 +10,16 @@ from utils.api_client import ApiFootballClient
 from utils.keep_alive import keep_alive
 from modules.jogos_elite import JogosEliteModule
 from modules.regressao_media import RegressaoMediaModule
+# No início do main.py, após as importações
+bot_instance = None  # Variável global para acesso ao bot
+
+class BotConsolidado:
+    def __init__(self):
+        global bot_instance
+        bot_instance = self  # Permitir acesso global ao bot
+        
+        # ... resto do código existente ...
+
 
 # Filtro para censurar tokens nos logs
 class RedactSecretsFilter(logging.Filter):
@@ -218,15 +228,23 @@ f"❌ Campeonatos: Desativado (economia)" + f"""
             await self.shutdown()
 
     async def shutdown(self):
-        """Encerra o bot graciosamente"""
-        logger.info("🛑 Encerrando bot...")
-        
-        if self.scheduler.running:
-            self.scheduler.shutdown(wait=True)
-            logger.info("⏰ Scheduler encerrado")
-        
-        await self.telegram_client.send_admin_message("🛑 Bot encerrado")
-        logger.info("👋 Bot encerrado com sucesso")
+    """Encerra o bot graciosamente"""
+    logger.info("🛑 Encerrando bot...")
+    
+    if hasattr(self, 'scheduler') and self.scheduler.running:
+        self.scheduler.shutdown(wait=True)
+        logger.info("⏰ Scheduler encerrado")
+    
+    # Parar servidor keep-alive
+    try:
+        from utils.keep_alive import stop_server
+        await stop_server()
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao parar keep-alive: {e}")
+    
+    await self.telegram_client.send_admin_message("🛑 Bot encerrado")
+    logger.info("👋 Bot encerrado com sucesso")
+
 
 async def main():
     """Função principal"""
