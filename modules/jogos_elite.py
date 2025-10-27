@@ -2,7 +2,7 @@ import asyncio
 import logging
 import unicodedata
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from config import Config
 from telegram_client import TelegramClient
 from utils.api_client import ApiFootballClient
@@ -11,7 +11,7 @@ from data.elite_teams import ELITE_TEAMS
 logger = logging.getLogger(__name__)
 
 class JogosEliteModule:
-    """Módulo para monitorar jogos de times de elite - OTIMIZADO (apenas hoje)"""
+    """Módulo para monitorar jogos de times de elite - OTIMIZADO"""
     
     def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient):
         self.telegram_client = telegram_client
@@ -20,7 +20,7 @@ class JogosEliteModule:
         self.elite_teams_normalized = {self.normalize_name(team) for team in self.elite_teams}
         self.notified_fixtures = set()
         
-        logger.info(f"🌟 Módulo Elite inicializado com {len(self.elite_teams)} times - MODO ECONOMIA")
+        logger.info(f"🌟 Módulo Elite inicializado com {len(self.elite_teams)} times - MODO OTIMIZADO")
     
     def normalize_name(self, name):
         """Normaliza nomes de times para melhor correspondência"""
@@ -38,11 +38,11 @@ class JogosEliteModule:
             logger.info("Módulo Elite desabilitado")
             return
         
-        logger.info("🌟 Executando monitoramento de jogos de elite (APENAS HOJE - MODO ECONOMIA)...")
+        logger.info("🌟 Executando monitoramento de jogos de elite (APENAS HOJE - MODO OTIMIZADO)...")
         
         try:
             # Buscar jogos APENAS do dia atual
-            today_date = datetime.utcnow()
+            today_date = datetime.now(timezone.utc)
             date_str = today_date.strftime("%Y-%m-%d")
             
             logger.info(f"🔍 Buscando jogos apenas para HOJE: {date_str}")
@@ -56,10 +56,15 @@ class JogosEliteModule:
             
             if not all_matches:
                 logger.warning("❌ NENHUM JOGO ENCONTRADO PARA HOJE")
-                api_stats = self.api_client.get_monthly_usage_stats()
+                try:
+                    api_stats = self.api_client.get_daily_usage_stats()
+                    api_info = f"{api_stats['bot_used']}/{api_stats['bot_limit']} ({api_stats['bot_percentage']}%)"
+                except:
+                    api_info = "N/A"
+                
                 message = f"""⚠️ **Elite**: Nenhuma partida encontrada para hoje
 
-🔧 **API Usage:** {api_stats['used']}/{api_stats['limit']} ({api_stats['percentage_used']}%)
+🔧 **API Usage:** {api_info}
 📅 {date_str}"""
                 await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
                 return
@@ -100,21 +105,29 @@ class JogosEliteModule:
                     
                     # Verificar time da casa
                     if self.normalize_name(home_team) in self.elite_teams_normalized:
+                        logger.debug(f"🔍 Verificando {home_team} (ID: {home_id}, Liga: {league_id}, Season: {season})")
                         avg = self.api_client.get_team_goals_average(home_id, league_id, season)
                         api_requests_for_stats += 1
+                        logger.info(f"📊 {home_team} média: {avg} (threshold: {Config.ELITE_GOALS_THRESHOLD})")
                         
                         if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
                             qualifying_teams.append(f"🏠 {home_team}: {avg:.2f} gols/jogo")
                             logger.info(f"✅ {home_team} QUALIFICADO!")
+                        else:
+                            logger.info(f"❌ {home_team} não qualificado (avg={avg})")
                     
                     # Verificar time visitante
                     if self.normalize_name(away_team) in self.elite_teams_normalized:
+                        logger.debug(f"🔍 Verificando {away_team} (ID: {away_id}, Liga: {league_id}, Season: {season})")
                         avg = self.api_client.get_team_goals_average(away_id, league_id, season)
                         api_requests_for_stats += 1
+                        logger.info(f"📊 {away_team} média: {avg} (threshold: {Config.ELITE_GOALS_THRESHOLD})")
                         
                         if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
                             qualifying_teams.append(f"✈️ {away_team}: {avg:.2f} gols/jogo")
                             logger.info(f"✅ {away_team} QUALIFICADO!")
+                        else:
+                            logger.info(f"❌ {away_team} não qualificado (avg={avg})")
                     
                     if qualifying_teams:
                         try:
@@ -136,7 +149,7 @@ class JogosEliteModule:
 🎯 <b>Recomendação:</b> Over 2.5 gols, BTTS
 
 📊 <b>Critério:</b> Times da lista elite com ≥ {Config.ELITE_GOALS_THRESHOLD} gols/jogo na temporada {season}
-📅 <b>Gerado em:</b> {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC"""
+📅 <b>Gerado em:</b> {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"""
                         
                         success = await self.telegram_client.send_message(Config.CHAT_ID_ELITE, message)
                         if success:
@@ -148,8 +161,15 @@ class JogosEliteModule:
                     logger.error(f"❌ Erro ao processar partida elite: {e}", exc_info=True)
                     continue
             
-            # Resumo com estatísticas de API
-            api_stats = self.api_client.get_monthly_usage_stats()
+            # Resumo com estatísticas CORRIGIDAS
+            try:
+                api_stats = self.api_client.get_daily_usage_stats()
+                api_info = f"{api_stats['bot_used']}/{api_stats['bot_limit']} ({api_stats['bot_percentage']}%)"
+                remaining_info = f"⚠️ Restante: {api_stats['bot_remaining']} requests"
+            except Exception as e:
+                logger.warning(f"Erro ao obter stats da API: {e}")
+                api_info = "N/A"
+                remaining_info = ""
             
             summary = f"""ℹ️ <b>Monitoramento Elite Concluído</b>
 
@@ -157,11 +177,11 @@ class JogosEliteModule:
 🌟 Times elite encontrados: {len(elite_found)}
 🚨 Alertas enviados: {notifications_sent}
 
-🔧 <b>API Usage:</b> {api_stats['used']}/{api_stats['limit']} ({api_stats['percentage_used']}%)
+🔧 <b>API Usage:</b> {api_info}
 📈 Requests para stats: {api_requests_for_stats}
-⚠️ Restante: {api_stats['remaining']} requests
+{remaining_info}
 
-⏰ Próxima execução: amanhã às 08:00 Lisboa
+⏰ Próxima execução: conforme agendamento
 📅 {date_str}"""
             
             await self.telegram_client.send_message(Config.CHAT_ID_ELITE, summary)
