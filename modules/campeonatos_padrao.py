@@ -6,6 +6,16 @@ from telegram_client import TelegramClient
 from utils.api_client import ApiFootballClient
 from data.leagues_config import CAMPEONATOS_LEAGUES
 
+# ✅ INTEGRAÇÃO SUPABASE - Importar da main
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from main import botscore
+except ImportError:
+    botscore = None
+    logging.warning("⚠️ BotScoreProIntegration não disponível - integração desabilitada")
+
 logger = logging.getLogger(__name__)
 
 class CampeonatosPadraoModule:
@@ -241,28 +251,35 @@ class CampeonatosPadraoModule:
                     # Critérios para insights
                     insights = []
                     confidence_score = 0
+                    market_recommendation = []
                     
                     # Over 2.5 Gols
                     avg_over_25 = (home_form['over_25_percentage'] + away_form['over_25_percentage']) / 2
                     if avg_over_25 >= 70:
                         insights.append("🔥 Over 2.5 Gols")
+                        market_recommendation.append("Over 2.5")
                         confidence_score += 2
                     elif avg_over_25 >= 60:
                         insights.append("🟡 Over 2.5 Gols")
+                        market_recommendation.append("Over 2.5")
                         confidence_score += 1
                     
                     # BTTS (Both Teams To Score)
                     avg_btts = (home_form['btts_percentage'] + away_form['btts_percentage']) / 2
                     if avg_btts >= 60:
                         insights.append("⚽ BTTS")
+                        market_recommendation.append("BTTS")
                         confidence_score += 1
                     
                     # Vantagem de Forma
+                    form_advantage = None
                     if home_form['form_percentage'] >= 70 and away_form['form_percentage'] <= 30:
                         insights.append("🏠 Vantagem Casa")
+                        form_advantage = "home"
                         confidence_score += 1
                     elif away_form['form_percentage'] >= 70 and home_form['form_percentage'] <= 30:
                         insights.append("✈️ Vantagem Visitante")
+                        form_advantage = "away"
                         confidence_score += 1
                     
                     # Enviar insight se confiança >= 2
@@ -272,6 +289,9 @@ class CampeonatosPadraoModule:
                         if notification_key not in self.notified_today:
                             priority = "ALTA" if confidence_score >= 3 else "MÉDIA"
                             priority_emoji = "🔥" if confidence_score >= 3 else "🟡"
+                            
+                            # Calcular confiança numérica para Supabase
+                            confidence_numeric = min(95, 60 + (confidence_score * 10))
                             
                             message = f"""{priority_emoji} <b>ANÁLISE CAMPEONATOS - PRIORIDADE {priority}</b>
 
@@ -299,6 +319,40 @@ class CampeonatosPadraoModule:
                                 self.notified_today.add(notification_key)
                                 insights_sent += 1
                                 logger.info(f"✅ Campeonatos: {home_team} vs {away_team} (confiança: {confidence_score})")
+                                
+                                # ✅ INTEGRAÇÃO SUPABASE - LINHA 3
+                                if botscore:
+                                    try:
+                                        # Determinar mercado principal
+                                        if "Over 2.5" in market_recommendation:
+                                            main_market = "Over 2.5 Goals"
+                                            estimated_odd = 1.75
+                                        elif "BTTS" in market_recommendation:
+                                            main_market = "BTTS"
+                                            estimated_odd = 1.80
+                                        else:
+                                            main_market = " / ".join(market_recommendation) if market_recommendation else "Análise Estatística"
+                                            estimated_odd = 1.70
+                                        
+                                        opportunity_data = {
+                                            'bot_name': 'Bot Campeonatos 3em1',
+                                            'match_info': f"{home_team} vs {away_team}",
+                                            'league': league_config['name'],
+                                            'market': main_market,
+                                            'odd': estimated_odd,
+                                            'confidence': confidence_numeric,
+                                            'status': 'pre-match',
+                                            'match_date': match_datetime.isoformat(),
+                                            'analysis': f"Forma: Casa {home_form['form_percentage']:.0f}% vs Fora {away_form['form_percentage']:.0f}%. {', '.join(insights)}"
+                                        }
+                                        
+                                        resultado = botscore.send_opportunity(opportunity_data)
+                                        if resultado:
+                                            logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
+                                        else:
+                                            logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
+                                    except Exception as e:
+                                        logger.error(f"❌ Erro ao enviar para Supabase: {e}")
                 
                 except Exception as e:
                     logger.error(f"❌ Erro processando jogo: {e}")
