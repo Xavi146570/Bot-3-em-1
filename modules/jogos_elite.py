@@ -8,6 +8,16 @@ from telegram_client import TelegramClient
 from utils.api_client import ApiFootballClient
 from data.elite_teams import ELITE_TEAMS
 
+# ✅ INTEGRAÇÃO SUPABASE - Importar da main
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from main import botscore
+except ImportError:
+    botscore = None
+    logging.warning("⚠️ BotScoreProIntegration não disponível - integração desabilitada")
+
 logger = logging.getLogger(__name__)
 
 class JogosEliteModule:
@@ -102,6 +112,7 @@ class JogosEliteModule:
                     season = match['league']['season']
                     
                     qualifying_teams = []
+                    team_averages = {}
                     
                     # Verificar time da casa
                     if self.normalize_name(home_team) in self.elite_teams_normalized:
@@ -112,6 +123,7 @@ class JogosEliteModule:
                         
                         if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
                             qualifying_teams.append(f"🏠 {home_team}: {avg:.2f} gols/jogo")
+                            team_averages['home'] = avg
                             logger.info(f"✅ {home_team} QUALIFICADO!")
                         else:
                             logger.info(f"❌ {home_team} não qualificado (avg={avg})")
@@ -125,6 +137,7 @@ class JogosEliteModule:
                         
                         if avg is not None and avg >= Config.ELITE_GOALS_THRESHOLD:
                             qualifying_teams.append(f"✈️ {away_team}: {avg:.2f} gols/jogo")
+                            team_averages['away'] = avg
                             logger.info(f"✅ {away_team} QUALIFICADO!")
                         else:
                             logger.info(f"❌ {away_team} não qualificado (avg={avg})")
@@ -156,6 +169,33 @@ class JogosEliteModule:
                             self.notified_fixtures.add(fixture_id)
                             notifications_sent += 1
                             logger.info(f"✅ Elite: {home_team} vs {away_team}")
+                            
+                            # ✅ INTEGRAÇÃO SUPABASE - LINHA 3
+                            if botscore:
+                                try:
+                                    # Calcular confiança baseada nas médias
+                                    avg_goals = sum(team_averages.values()) / len(team_averages) if team_averages else Config.ELITE_GOALS_THRESHOLD
+                                    confidence = min(95, int(60 + (avg_goals - Config.ELITE_GOALS_THRESHOLD) * 10))
+                                    
+                                    opportunity_data = {
+                                        'bot_name': 'Bot Elite 3em1',
+                                        'match_info': f"{home_team} vs {away_team}",
+                                        'league': league_name,
+                                        'market': 'Over 2.5 / BTTS',
+                                        'odd': 1.85,  # Odd estimada
+                                        'confidence': confidence,
+                                        'status': 'pre-match',
+                                        'match_date': dt.isoformat(),
+                                        'analysis': f"Times elite: {', '.join(qualifying_teams)}"
+                                    }
+                                    
+                                    resultado = botscore.send_opportunity(opportunity_data)
+                                    if resultado:
+                                        logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
+                                    else:
+                                        logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
+                                except Exception as e:
+                                    logger.error(f"❌ Erro ao enviar para Supabase: {e}")
                 
                 except Exception as e:
                     logger.error(f"❌ Erro ao processar partida elite: {e}", exc_info=True)
