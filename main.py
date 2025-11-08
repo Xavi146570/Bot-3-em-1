@@ -11,6 +11,9 @@ from utils.keep_alive import keep_alive
 from modules.jogos_elite import JogosEliteModule
 from modules.regressao_media import RegressaoMediaModule
 
+# ✅ INTEGRAÇÃO SUPABASE - LINHA 1
+from PYTHON_BOT_EXAMPLE import BotScoreProIntegration
+
 # Filtro para censurar tokens nos logs
 class RedactSecretsFilter(logging.Filter):
     def __init__(self):
@@ -47,6 +50,9 @@ logger = logging.getLogger(__name__)
 
 # Variável global para acesso ao bot
 bot_instance = None
+
+# ✅ INTEGRAÇÃO SUPABASE - LINHA 2
+botscore = BotScoreProIntegration()
 
 class BotConsolidado:
     """Bot de Futebol Consolidado - VERSÃO OTIMIZADA PARA 2000 REQUESTS/DIA"""
