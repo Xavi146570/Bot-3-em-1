@@ -11,18 +11,6 @@ from utils.keep_alive import keep_alive
 from modules.jogos_elite import JogosEliteModule
 from modules.regressao_media import RegressaoMediaModule
 
-# ✅ INTEGRAÇÃO SUPABASE - LINHA 1 (COM TRATAMENTO DE ERRO)
-try:
-    from PYTHON_BOT_EXAMPLE import BotScoreProIntegration
-    logger.info("✅ Módulo BotScoreProIntegration importado com sucesso")
-except ImportError as e:
-    logger.error(f"❌ Erro ao importar BotScoreProIntegration: {e}")
-    BotScoreProIntegration = None
-except Exception as e:
-    logger.error(f"❌ Erro inesperado ao importar BotScoreProIntegration: {e}")
-    BotScoreProIntegration = None
-
-
 # Filtro para censurar tokens nos logs
 class RedactSecretsFilter(logging.Filter):
     def __init__(self):
@@ -55,28 +43,43 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
+# ✅ CRIAR LOGGER ANTES DE USAR
 logger = logging.getLogger(__name__)
+
+# ✅ INTEGRAÇÃO SUPABASE - Importar DEPOIS do logger
+try:
+    from PYTHON_BOT_EXAMPLE import BotScoreProIntegration
+    logger.info("✅ Módulo BotScoreProIntegration importado")
+except ImportError as e:
+    logger.error(f"❌ Erro ao importar BotScoreProIntegration: {e}")
+    BotScoreProIntegration = None
+except Exception as e:
+    logger.error(f"❌ Erro inesperado ao importar BotScoreProIntegration: {e}")
+    BotScoreProIntegration = None
 
 # Variável global para acesso ao bot
 bot_instance = None
 
-# ✅ INTEGRAÇÃO SUPABASE - LINHA 2 (COM VALIDAÇÃO)
+# ✅ INTEGRAÇÃO SUPABASE - Inicializar DEPOIS do logger
+botscore = None
 try:
     if BotScoreProIntegration is not None:
         botscore = BotScoreProIntegration()
-        logger.info("✅ BotScoreProIntegration inicializado com sucesso")
+        logger.info("✅ BotScoreProIntegration inicializado")
         
-        # Testar conexão imediatamente
+        # Testar conexão
         if botscore.test_connection():
-            logger.info("✅ Teste de conexão Supabase: OK")
+            logger.info("✅ Conexão Supabase testada com sucesso")
         else:
-            logger.warning("⚠️ Teste de conexão Supabase falhou - verifique credenciais")
+            logger.warning("⚠️ Teste de conexão Supabase falhou")
     else:
-        botscore = None
-        logger.error("❌ BotScoreProIntegration não disponível - classe não foi importada")
+        logger.error("❌ BotScoreProIntegration não disponível")
 except Exception as e:
     logger.error(f"❌ Erro ao inicializar BotScoreProIntegration: {e}")
     botscore = None
+
+# ... resto do código continua igual (classe BotConsolidado, etc) ...
+
 
 
 class BotConsolidado:
