@@ -8,15 +8,8 @@ from telegram_client import TelegramClient
 from utils.api_client import ApiFootballClient
 from data.elite_teams import ELITE_TEAMS
 
-# ✅ INTEGRAÇÃO SUPABASE - Importar da main
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-try:
-    from main import botscore
-except ImportError:
-    botscore = None
-    logging.warning("⚠️ BotScoreProIntegration não disponível - integração desabilitada")
+# ✅ INTEGRAÇÃO SUPABASE - NÃO importar no topo
+# Vamos importar dentro da função quando precisar
 
 logger = logging.getLogger(__name__)
 
@@ -170,36 +163,38 @@ class JogosEliteModule:
                             notifications_sent += 1
                             logger.info(f"✅ Elite: {home_team} vs {away_team}")
                             
-                            # ✅ INTEGRAÇÃO SUPABASE - LINHA 3
-                            if botscore:
-                                try:
-                                    # Calcular confiança baseada nas médias
-                                    avg_goals = sum(team_averages.values()) / len(team_averages) if team_averages else Config.ELITE_GOALS_THRESHOLD
-                                    confidence = min(95, int(60 + (avg_goals - Config.ELITE_GOALS_THRESHOLD) * 10))
-                                    
-                                    opportunity_data = {
-                                        'bot_name': 'Bot Elite 3em1',
-                                        'match_info': f"{home_team} vs {away_team}",
-                                        'league': league_name,
-                                        'market': 'Over 2.5 / BTTS',
-                                        'odd': 1.85,  # Odd estimada
-                                        'confidence': confidence,
-                                        'status': 'pre-match',
-                                        'match_date': dt.isoformat(),
-                                        'analysis': f"Times elite: {', '.join(qualifying_teams)}"
-                                    }
-                                    
-                                    resultado = botscore.send_opportunity(opportunity_data)
-                                    if resultado:
-                                        logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
-                                    else:
-                                        logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
-                                except Exception as e:
-                                    logger.error(f"❌ Erro ao enviar para Supabase: {e}")
+            # ✅ INTEGRAÇÃO SUPABASE - LINHA 3 (importar aqui)
+try:
+    from main import botscore
+    
+    if botscore:
+        try:
+            # Calcular confiança baseada nas médias
+            avg_goals = sum(team_averages.values()) / len(team_averages) if team_averages else Config.ELITE_GOALS_THRESHOLD
+            confidence = min(95, int(60 + (avg_goals - Config.ELITE_GOALS_THRESHOLD) * 10))
+            
+            opportunity_data = {
+                'bot_name': 'Bot Elite 3em1',
+                'match_info': f"{home_team} vs {away_team}",
+                'league': league_name,
+                'market': 'Over 2.5 / BTTS',
+                'odd': 1.85,
+                'confidence': confidence,
+                'status': 'pre-match',
+                'match_date': dt.isoformat(),
+                'analysis': f"Times elite: {', '.join(qualifying_teams)}"
+            }
+            
+            resultado = botscore.send_opportunity(opportunity_data)
+            if resultado:
+                logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
+            else:
+                logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao enviar para Supabase: {e}")
+except ImportError:
+    logger.debug("⚠️ Supabase integration não disponível")
                 
-                except Exception as e:
-                    logger.error(f"❌ Erro ao processar partida elite: {e}", exc_info=True)
-                    continue
             
             # Resumo com estatísticas CORRIGIDAS
             try:
