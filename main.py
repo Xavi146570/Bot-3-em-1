@@ -11,8 +11,17 @@ from utils.keep_alive import keep_alive
 from modules.jogos_elite import JogosEliteModule
 from modules.regressao_media import RegressaoMediaModule
 
-# ✅ INTEGRAÇÃO SUPABASE - LINHA 1
-from PYTHON_BOT_EXAMPLE import BotScoreProIntegration
+# ✅ INTEGRAÇÃO SUPABASE - LINHA 1 (COM TRATAMENTO DE ERRO)
+try:
+    from PYTHON_BOT_EXAMPLE import BotScoreProIntegration
+    logger.info("✅ Módulo BotScoreProIntegration importado com sucesso")
+except ImportError as e:
+    logger.error(f"❌ Erro ao importar BotScoreProIntegration: {e}")
+    BotScoreProIntegration = None
+except Exception as e:
+    logger.error(f"❌ Erro inesperado ao importar BotScoreProIntegration: {e}")
+    BotScoreProIntegration = None
+
 
 # Filtro para censurar tokens nos logs
 class RedactSecretsFilter(logging.Filter):
