@@ -10,9 +10,6 @@ from utils.api_client import ApiFootballClient
 from data.leagues_config import REGRESSAO_LEAGUES
 from data.regressao_watchlist import REGRESSAO_WATCHLIST, calculate_risk_level
 
-# ✅ INTEGRAÇÃO SUPABASE - NÃO importar no topo
-# Vamos importar dentro da função quando precisar
-
 logger = logging.getLogger(__name__)
 
 def normalize_name(name: str) -> str:
@@ -364,34 +361,33 @@ class RegressaoMediaModule:
                                 self.notified_matches.add(notification_key)
                                 alerts_sent += 1
                                 logger.info(f"✅ Regressão: {home_team} vs {away_team} (confiança: {confidence})")
-                             # ✅ INTEGRAÇÃO SUPABASE - LINHA 3 (importar aqui)
-try:
-    from main import botscore
-    
-    if botscore:
-        try:
-            opportunity_data = {
-                'bot_name': 'Bot Regressão 3em1',
-                'match_info': f"{home_team} vs {away_team}",
-                'league': league_info['name'],
-                'market': 'Over 1.5 Goals',
-                'odd': 1.70,
-                'confidence': confidence_score,
-                'status': 'pre-match',
-                'match_date': match_datetime.isoformat(),
-                'analysis': f"Regressão à média: {', '.join(confidence_factors)}"
-            }
-            
-            resultado = botscore.send_opportunity(opportunity_data)
-            if resultado:
-                logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
-            else:
-                logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
-        except Exception as e:
-            logger.error(f"❌ Erro ao enviar para Supabase: {e}")
-except ImportError:
-    logger.debug("⚠️ Supabase integration não disponível")   
                                 
+                                # ✅ INTEGRAÇÃO SUPABASE - Importar aqui quando precisar
+                                try:
+                                    from main import botscore
+                                    
+                                    if botscore:
+                                        opportunity_data = {
+                                            'bot_name': 'Bot Regressão 3em1',
+                                            'match_info': f"{home_team} vs {away_team}",
+                                            'league': league_info['name'],
+                                            'market': 'Over 1.5 Goals',
+                                            'odd': 1.70,
+                                            'confidence': confidence_score,
+                                            'status': 'pre-match',
+                                            'match_date': match_datetime.isoformat(),
+                                            'analysis': f"Regressão à média: {', '.join(confidence_factors)}"
+                                        }
+                                        
+                                        resultado = botscore.send_opportunity(opportunity_data)
+                                        if resultado:
+                                            logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
+                                        else:
+                                            logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
+                                except ImportError:
+                                    logger.debug("⚠️ Supabase integration não disponível")
+                                except Exception as e:
+                                    logger.error(f"❌ Erro ao enviar para Supabase: {e}")
                         else:
                             logger.debug(f"🔄 {home_team} vs {away_team} já notificado hoje")
                     else:
