@@ -60,8 +60,24 @@ logger = logging.getLogger(__name__)
 # Variável global para acesso ao bot
 bot_instance = None
 
-# ✅ INTEGRAÇÃO SUPABASE - LINHA 2
-botscore = BotScoreProIntegration()
+# ✅ INTEGRAÇÃO SUPABASE - LINHA 2 (COM VALIDAÇÃO)
+try:
+    if BotScoreProIntegration is not None:
+        botscore = BotScoreProIntegration()
+        logger.info("✅ BotScoreProIntegration inicializado com sucesso")
+        
+        # Testar conexão imediatamente
+        if botscore.test_connection():
+            logger.info("✅ Teste de conexão Supabase: OK")
+        else:
+            logger.warning("⚠️ Teste de conexão Supabase falhou - verifique credenciais")
+    else:
+        botscore = None
+        logger.error("❌ BotScoreProIntegration não disponível - classe não foi importada")
+except Exception as e:
+    logger.error(f"❌ Erro ao inicializar BotScoreProIntegration: {e}")
+    botscore = None
+
 
 class BotConsolidado:
     """Bot de Futebol Consolidado - VERSÃO OTIMIZADA PARA 2000 REQUESTS/DIA"""
