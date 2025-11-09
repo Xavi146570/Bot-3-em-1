@@ -67,12 +67,22 @@ try:
         botscore = BotScoreProIntegration()
         logger.info("✅ BotScoreProIntegration inicializado")
         
-        # Testar conexão
-        if botscore.test_connection():
+        # Testar conexão COM LOGS DETALHADOS
+        logger.info("🔍 Iniciando test_connection()...")
+        try:
+            connection_ok = botscore.test_connection()
+            logger.info(f"🔍 test_connection retornou: {connection_ok}")
+        except Exception as e:
+            logger.error(f"❌ Exceção no test_connection: {e}")
+            connection_ok = False
+        
+        if connection_ok:
             logger.info("✅ Conexão Supabase testada com sucesso")
             
             # 🧪 TESTE MANUAL - REMOVER DEPOIS
+            logger.info("🧪 Preparando teste manual...")
             from datetime import datetime
+            
             test_opportunity = {
                 'bot_name': '🧪 TESTE MANUAL',
                 'match_info': 'Manchester City vs Liverpool',
@@ -84,19 +94,31 @@ try:
                 'match_date': datetime.utcnow().isoformat(),
                 'analysis': 'Teste de integração'
             }
-            resultado = botscore.send_opportunity(test_opportunity)
-            if resultado:
-                logger.info("✅ TESTE MANUAL ENVIADO - Verifique Supabase Table Editor")
-            else:
-                logger.error("❌ TESTE MANUAL FALHOU")
+            
+            logger.info("🧪 Enviando oportunidade de teste para Supabase...")
+            try:
+                resultado = botscore.send_opportunity(test_opportunity)
+                logger.info(f"🧪 send_opportunity retornou: {resultado}")
+                
+                if resultado:
+                    logger.info("=" * 60)
+                    logger.info("✅✅✅ TESTE MANUAL ENVIADO COM SUCESSO!")
+                    logger.info("🔍 Verifique Supabase → Table Editor → opportunities")
+                    logger.info("Deve aparecer uma linha com bot_name = '🧪 TESTE MANUAL'")
+                    logger.info("=" * 60)
+                else:
+                    logger.error("=" * 60)
+                    logger.error("❌❌❌ TESTE MANUAL FALHOU - send_opportunity retornou False")
+                    logger.error("=" * 60)
+            except Exception as e:
+                logger.error(f"❌ Exceção ao enviar teste: {e}", exc_info=True)
         else:
-            logger.warning("⚠️ Teste de conexão Supabase falhou")
+            logger.warning("⚠️ Teste de conexão Supabase falhou - pulando teste manual")
     else:
         logger.error("❌ BotScoreProIntegration não disponível")
 except Exception as e:
-    logger.error(f"❌ Erro ao inicializar BotScoreProIntegration: {e}")
+    logger.error(f"❌ Erro ao inicializar BotScoreProIntegration: {e}", exc_info=True)
     botscore = None
-
 
 # ... resto do código continua igual (classe BotConsolidado, etc) ...
 
