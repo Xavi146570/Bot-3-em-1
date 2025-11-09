@@ -6,9 +6,6 @@ from telegram_client import TelegramClient
 from utils.api_client import ApiFootballClient
 from data.leagues_config import CAMPEONATOS_LEAGUES
 
-# ✅ INTEGRAÇÃO SUPABASE - NÃO importar no topo
-# Vamos importar dentro da função quando precisar
-
 logger = logging.getLogger(__name__)
 
 class CampeonatosPadraoModule:
@@ -312,39 +309,45 @@ class CampeonatosPadraoModule:
                                 self.notified_today.add(notification_key)
                                 insights_sent += 1
                                 logger.info(f"✅ Campeonatos: {home_team} vs {away_team} (confiança: {confidence_score})")
-                               # ✅ INTEGRAÇÃO SUPABASE - LINHA 3 (importar aqui)
-try:
-    from main import botscore
-    
-    if botscore:
-        try:
-            # Calcular confiança baseada nas médias
-            avg_goals = sum(team_averages.values()) / len(team_averages) if team_averages else Config.ELITE_GOALS_THRESHOLD
-            confidence = min(95, int(60 + (avg_goals - Config.ELITE_GOALS_THRESHOLD) * 10))
-            
-            opportunity_data = {
-                'bot_name': 'Bot Elite 3em1',
-                'match_info': f"{home_team} vs {away_team}",
-                'league': league_name,
-                'market': 'Over 2.5 / BTTS',
-                'odd': 1.85,
-                'confidence': confidence,
-                'status': 'pre-match',
-                'match_date': dt.isoformat(),
-                'analysis': f"Times elite: {', '.join(qualifying_teams)}"
-            }
-            
-            resultado = botscore.send_opportunity(opportunity_data)
-            if resultado:
-                logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
-            else:
-                logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
-        except Exception as e:
-            logger.error(f"❌ Erro ao enviar para Supabase: {e}")
-except ImportError:
-    logger.debug("⚠️ Supabase integration não disponível")
- 
                                 
+                                # ✅ INTEGRAÇÃO SUPABASE - Importar aqui quando precisar
+                                try:
+                                    from main import botscore
+                                    
+                                    if botscore:
+                                        # Determinar mercado principal
+                                        if "Over 2.5" in market_recommendation:
+                                            main_market = "Over 2.5 Goals"
+                                            estimated_odd = 1.75
+                                        elif "BTTS" in market_recommendation:
+                                            main_market = "BTTS"
+                                            estimated_odd = 1.80
+                                        else:
+                                            main_market = " / ".join(market_recommendation) if market_recommendation else "Análise Estatística"
+                                            estimated_odd = 1.70
+                                        
+                                        opportunity_data = {
+                                            'bot_name': 'Bot Campeonatos 3em1',
+                                            'match_info': f"{home_team} vs {away_team}",
+                                            'league': league_config['name'],
+                                            'market': main_market,
+                                            'odd': estimated_odd,
+                                            'confidence': confidence_numeric,
+                                            'status': 'pre-match',
+                                            'match_date': match_datetime.isoformat(),
+                                            'analysis': f"Forma: Casa {home_form['form_percentage']:.0f}% vs Fora {away_form['form_percentage']:.0f}%. {', '.join(insights)}"
+                                        }
+                                        
+                                        resultado = botscore.send_opportunity(opportunity_data)
+                                        if resultado:
+                                            logger.info(f"📤 Oportunidade enviada para ScorePro: {home_team} vs {away_team}")
+                                        else:
+                                            logger.warning(f"⚠️ Falha ao enviar para ScorePro: {home_team} vs {away_team}")
+                                except ImportError:
+                                    logger.debug("⚠️ Supabase integration não disponível")
+                                except Exception as e:
+                                    logger.error(f"❌ Erro ao enviar para Supabase: {e}")
+                
                 except Exception as e:
                     logger.error(f"❌ Erro processando jogo: {e}")
                     continue
