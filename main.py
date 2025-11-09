@@ -60,7 +60,7 @@ except Exception as e:
 # Variável global para acesso ao bot
 bot_instance = None
 
-# ✅ INTEGRAÇÃO SUPABASE - Inicializar DEPOIS do logger
+# ✅ INTEGRAÇÃO SUPABASE - Inicializar
 botscore = None
 try:
     if BotScoreProIntegration is not None:
@@ -70,6 +70,25 @@ try:
         # Testar conexão
         if botscore.test_connection():
             logger.info("✅ Conexão Supabase testada com sucesso")
+            
+            # 🧪 TESTE MANUAL - REMOVER DEPOIS
+            from datetime import datetime
+            test_opportunity = {
+                'bot_name': '🧪 TESTE MANUAL',
+                'match_info': 'Manchester City vs Liverpool',
+                'league': 'Premier League',
+                'market': 'Over 2.5 Goals',
+                'odd': 1.85,
+                'confidence': 95,
+                'status': 'pre-match',
+                'match_date': datetime.utcnow().isoformat(),
+                'analysis': 'Teste de integração'
+            }
+            resultado = botscore.send_opportunity(test_opportunity)
+            if resultado:
+                logger.info("✅ TESTE MANUAL ENVIADO - Verifique Supabase Table Editor")
+            else:
+                logger.error("❌ TESTE MANUAL FALHOU")
         else:
             logger.warning("⚠️ Teste de conexão Supabase falhou")
     else:
@@ -77,6 +96,7 @@ try:
 except Exception as e:
     logger.error(f"❌ Erro ao inicializar BotScoreProIntegration: {e}")
     botscore = None
+
 
 # ... resto do código continua igual (classe BotConsolidado, etc) ...
 
