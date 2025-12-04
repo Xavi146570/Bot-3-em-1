@@ -106,61 +106,52 @@ class ApiFootballClient:
             logger.error(f"🔴 CRÍTICO: Apenas {remaining} requests restantes!")
 
     def get_fixtures_by_date(self, date_str: str, league_id=None, status="NS"):
-        """Busca jogos por data com controlo de quota"""
-        if not self._can_make_request():
-            logger.warning("🚫 get_fixtures_by_date bloqueado - limite atingido")
-            return []
+    """Busca jogos por data, liga e season (OBRIGATÓRIO!)"""
+    if not self._can_make_request():
+        logger.warning("🚫 get_fixtures_by_date bloqueado - limite atingido")
+        return []
 
-        try:
-            with httpx.Client(headers=self.headers, timeout=30.0) as client:
-                params = {"date": date_str, "status": status}
-                if league_id:
-                    params["league"] = league_id
+    # 📌 Season automática baseada no ano da data
+    try:
+        year = int(date_str.split("-")[0])
+        season = year if datetime.utcnow().month >= 7 else year - 1
+    except:
+        season = datetime.utcnow().year
+        logger.warning(f"⚠️ Falha ao detectar season. Usando season={season}")
 
-                url = f"{self.base_url}/fixtures"
-                response = client.get(url, params=params)
-                self._increment_counter(response)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    fixtures = data.get('response', [])
-                    logger.debug(f"📊 Fixtures: {len(fixtures)} encontrados")
-                    return fixtures
-                elif response.status_code == 429:
-                    logger.error("🚨 Rate limit atingido pela API")
-                    return []
-                else:
-                    logger.error(f"❌ API Error {response.status_code}")
-                    return []
-                    
-        except Exception as e:
-            logger.error(f"❌ Erro em get_fixtures_by_date: {e}")
-            return []
+    try:
+        with httpx.Client(headers=self.headers, timeout=30.0) as client:
+            params = {
+                "date": date_str,
+                "status": status,
+                "season": season    # <<--- AQUI ESTÁ A CORREÇÃO!!!
+            }
 
-    def get_team_recent_matches(self, team_id: int, count: int = 1):
-        """Busca jogos recentes com controlo de quota"""
-        if not self._can_make_request():
-            logger.warning(f"🚫 get_team_recent_matches bloqueado para team {team_id}")
-            return []
+            if league_id:
+                params["league"] = league_id
 
-        try:
-            with httpx.Client(headers=self.headers, timeout=30.0) as client:
-                params = {"team": team_id, "last": count}
-                url = f"{self.base_url}/fixtures"
-                
-                response = client.get(url, params=params)
-                self._increment_counter(response)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get('response', [])
-                else:
-                    logger.error(f"❌ API Error {response.status_code} para team {team_id}")
-                    return []
-                    
-        except Exception as e:
-            logger.error(f"❌ Erro em get_team_recent_matches: {e}")
-            return []
+            url = f"{self.base_url}/fixtures"
+            response = client.get(url, params=params)
+            self._increment_counter(response)
+
+            if response.status_code == 200:
+                data = response.json()
+                fixtures = data.get('response', [])
+                logger.debug(f"📊 Fixtures: {len(fixtures)} encontrados (season={season})")
+                return fixtures
+
+            elif response.status_code == 429:
+                logger.error("🚨 Rate limit atingido pela API")
+                return []
+
+            else:
+                logger.error(f"❌ API Error {response.status_code}")
+                return []
+
+    except Exception as e:
+        logger.error(f"❌ Erro em get_fixtures_by_date: {e}")
+        return []
+
 
     def get_team_goals_average(self, team_id: int, league_id: int, season: int):
         """Busca média de gols com controlo de quota"""
