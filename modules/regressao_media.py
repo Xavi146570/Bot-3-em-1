@@ -131,6 +131,11 @@ class RegressaoMediaModule:
         for league_id, info in self.allowed_leagues.items():
             ns = self.api_client.get_fixtures_by_date(date_str_utc, league_id=league_id, status="NS") or []
             tbd = self.api_client.get_fixtures_by_date(date_str_utc, league_id=league_id, status="TBD") or []
+            # Adicionar status aos jogos simulados
+            for match in ns:
+                match['fixture']['status'] = {'short': 'NS'}
+            for match in tbd:
+                match['fixture']['status'] = {'short': 'TBD'}
 
             league_matches += ns + tbd
             leagues_checked += 1
@@ -139,6 +144,9 @@ class RegressaoMediaModule:
         day_all = []
         for st in ("NS", "TBD"):
             d = self.api_client.get_fixtures_by_date(date_str_utc, league_id=None, status=st) or []
+            # Adicionar status aos jogos simulados
+            for match in d:
+                match['fixture']['status'] = {'short': st}
             day_all += d
 
         watchlist_matches = []
@@ -185,16 +193,22 @@ class RegressaoMediaModule:
                 league_id = match['league']['id']
                 league_info = self.allowed_leagues.get(league_id)
 
+                # A contagem de jogos analisados deve ser feita para todos os jogos do dia
+                analyzed += 1
+                
+                # O filtro para análise deve ser mantido
                 if not (league_info or home_watch or away_watch):
                     continue
-
-                analyzed += 1
 
                 home_ok, home_info = await self.check_team_zerozero(home_id, home)
                 away_ok, away_info = await self.check_team_zerozero(away_id, away)
 
                 if not (home_ok or away_ok):
                     continue
+                
+                # A contagem de alertas da watchlist é feita aqui, uma vez por jogo
+                if home_watch or away_watch:
+                    watchlist_alerts += 1
 
                 key = f"regressao00_{today_lisbon}_{match['fixture']['id']}"
                 if key in self.notified_matches:
@@ -205,11 +219,9 @@ class RegressaoMediaModule:
 
                 if home_watch:
                     msg_body += f"🏠 <b>{home}</b> está na watchlist (risk {home_watch['risk_level']})\n"
-                    watchlist_alerts += 1
 
                 if away_watch:
                     msg_body += f"✈️ <b>{away}</b> está na watchlist (risk {away_watch['risk_level']})\n"
-                    watchlist_alerts += 1
 
                 if home_ok:
                     msg_body += f"🏠 <b>{home}</b> vem de <b>0x0</b> vs {home_info['opponent']} ({home_info['date']})\n"
@@ -271,3 +283,5 @@ class RegressaoMediaModule:
         await self.telegram_client.send_message(Config.CHAT_ID_REGRESSAO, summary)
 
         logger.info("Execução regressão 0x0 concluída")
+
+
