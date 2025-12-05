@@ -283,5 +283,3 @@ class RegressaoMediaModule:
         await self.telegram_client.send_message(Config.CHAT_ID_REGRESSAO, summary)
 
         logger.info("Execução regressão 0x0 concluída")
-
-
