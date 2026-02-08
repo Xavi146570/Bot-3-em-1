@@ -25,9 +25,10 @@ def normalize_name(name: str) -> str:
 class RegressaoMediaModule:
     """Módulo para detectar regressão à média após jogos 0x0 - CORRIGIDO"""
 
-    def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient):
+    def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient, botscore=None):
         self.telegram_client = telegram_client
         self.api_client = api_client
+        self.botscore = botscore  # ✅ INTEGRAÇÃO SUPABASE
         
         self.allowed_leagues = {int(k): v for k, v in REGRESSAO_LEAGUES.items()}
         self.notified_matches = set()
@@ -271,6 +272,29 @@ class RegressaoMediaModule:
                 if success:
                     self.notified_matches.add(key)
                     alerts_sent += 1
+                    
+                    # ✅ ENVIAR PARA SUPABASE
+                    if self.botscore:
+                        try:
+                            opportunity = {
+                                "bot_name": "regressao",
+                                "match_info": f"{home} vs {away}",
+                                "league": league_info['name'],
+                                "market": "Over 2.5 gols (Regressão 0x0)",
+                                "odd": 1.70,
+                                "confidence": 90 if confidence == "ALTÍSSIMA" else (85 if confidence == "ALTA" else 75),
+                                "status": "pre-match" if status in ("NS", "TBD") else "live",
+                                "match_date": match_dt.isoformat(),
+                                "analysis": f"Regressão à média após 0x0. Fatores: {', '.join(confidence_factors)}"
+                            }
+                            
+                            supabase_ok = self.botscore.send_opportunity(opportunity)
+                            if supabase_ok:
+                                logger.info(f"✅ Oportunidade REGRESSÃO enviada ao Supabase: {home} vs {away}")
+                            else:
+                                logger.error(f"❌ Falha ao enviar REGRESSÃO ao Supabase: {home} vs {away}")
+                        except Exception as e:
+                            logger.error(f"❌ Erro ao enviar REGRESSÃO ao Supabase: {e}")
 
             except Exception as e:
                 logger.error(f"Erro processando jogo: {e}")
