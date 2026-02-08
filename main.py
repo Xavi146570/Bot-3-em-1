@@ -128,7 +128,7 @@ class BotConsolidado:
         if Config.REGRESSAO_ENABLED and not hasattr(Config, 'REGRESSAO_EXECUTION_HOURS'):
             raise ValueError("❌ REGRESSAO_EXECUTION_HOURS não configurado")
     
-   def _initialize_modules(self):
+    def _initialize_modules(self):
         """Inicializa módulos de forma segura"""
         module_configs = [
             ('elite', Config.ELITE_ENABLED, JogosEliteModule, "Elite"),
