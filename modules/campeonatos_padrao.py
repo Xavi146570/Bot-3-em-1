@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 class CampeonatosPadraoModule:
     """Módulo para análise de campeonatos padrão com estatísticas e tendências - OTIMIZADO"""
-    
-    def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient):
+
+    def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient, botscore=None):
         self.telegram_client = telegram_client
         self.api_client = api_client
+        self.botscore = botscore  # ✅ INTEGRAÇÃO SUPABASE
+        # ... resto do código igual
         self.notified_today = set()
         
         # Processar configuração das ligas de forma robusta
