@@ -128,7 +128,7 @@ class BotConsolidado:
         if Config.REGRESSAO_ENABLED and not hasattr(Config, 'REGRESSAO_EXECUTION_HOURS'):
             raise ValueError("❌ REGRESSAO_EXECUTION_HOURS não configurado")
     
-    def _initialize_modules(self):
+   def _initialize_modules(self):
         """Inicializa módulos de forma segura"""
         module_configs = [
             ('elite', Config.ELITE_ENABLED, JogosEliteModule, "Elite"),
@@ -138,7 +138,8 @@ class BotConsolidado:
         for key, enabled, module_class, name in module_configs:
             if enabled:
                 try:
-                    self.modules[key] = module_class(self.telegram_client, self.api_client)
+                    # ✅ PASSAR BOTSCORE COMO TERCEIRO PARÂMETRO
+                    self.modules[key] = module_class(self.telegram_client, self.api_client, botscore)
                     logger.info(f"✅ Módulo {name} inicializado")
                 except Exception as e:
                     logger.error(f"❌ Erro ao inicializar módulo {name}: {e}")
@@ -147,9 +148,11 @@ class BotConsolidado:
         if Config.CAMPEONATOS_ENABLED:
             try:
                 from modules.campeonatos_padrao import CampeonatosPadraoModule
+                # ✅ PASSAR BOTSCORE COMO TERCEIRO PARÂMETRO
                 self.modules['campeonatos'] = CampeonatosPadraoModule(
                     self.telegram_client, 
-                    self.api_client
+                    self.api_client,
+                    botscore  # ✅ ADICIONADO
                 )
                 logger.info("✅ Módulo Campeonatos inicializado")
             except ImportError:
