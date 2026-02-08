@@ -169,17 +169,17 @@ class JogosEliteModule:
                                     avg_goals = sum(team_averages.values()) / len(team_averages) if team_averages else Config.ELITE_GOALS_THRESHOLD
                                     confidence = min(95, int(60 + (avg_goals - Config.ELITE_GOALS_THRESHOLD) * 10))
                                     
-                                    opportunity_data = {
-                                        'bot_name': 'Bot Elite 3em1',
-                                        'match_info': f"{home_team} vs {away_team}",
-                                        'league': league_name,
-                                        'market': 'Over 2.5 / BTTS',
-                                        'odd': 1.85,
-                                        'confidence': confidence,
-                                        'status': 'pre-match',
-                                        'match_date': dt.isoformat(),
-                                        'analysis': f"Times elite: {', '.join(qualifying_teams)}"
-                                    }
+                                    opportunity = {
+    "bot_name": "elite",  # ✅ PADRONIZADO (minúscula)
+    "match_info": f"{jogo_data['home']} vs {jogo_data['away']}",
+    "league": jogo_data['league_name'],
+    "market": "Over 2.5 gols, BTTS",
+    "odd": jogo_data.get('odd', 1.80),
+    "confidence": 95,
+    "status": "pre-match",
+    "match_date": match_date_iso,
+    "analysis": " ".join(analysis_parts)
+}
                                     
                                     resultado = botscore.send_opportunity(opportunity_data)
                                     if resultado:
