@@ -14,20 +14,20 @@ class JogosEliteModule:
     """Módulo para monitorar jogos de times de elite - OTIMIZADO"""
     
     def __init__(self, telegram_client: TelegramClient, api_client: ApiFootballClient, botscore=None):
-    self.telegram_client = telegram_client
-    self.api_client = api_client
-    self.botscore = botscore  # ✅ INTEGRAÇÃO SUPABASE
-    self.elite_teams = ELITE_TEAMS
-    self.elite_teams_normalized = {self.normalize_name(team) for team in self.elite_teams}
-    self.notified_fixtures = set()
-    
-    # ✅ LOG DE DEBUG PARA VERIFICAR BOTSCORE
-    if self.botscore:
-        logger.info(f"✅ Módulo Elite: BotScore integration ATIVA (tipo: {type(self.botscore).__name__})")
-    else:
-        logger.warning("⚠️ Módulo Elite: BotScore integration NÃO DISPONÍVEL (botscore=None)")
-    
-    logger.info(f"🌟 Módulo Elite inicializado com {len(self.elite_teams)} times - MODO OTIMIZADO")
+        self.telegram_client = telegram_client
+        self.api_client = api_client
+        self.botscore = botscore  # ✅ INTEGRAÇÃO SUPABASE
+        self.elite_teams = ELITE_TEAMS
+        self.elite_teams_normalized = {self.normalize_name(team) for team in self.elite_teams}
+        self.notified_fixtures = set()
+        
+        # ✅ LOG DE DEBUG PARA VERIFICAR BOTSCORE
+        if self.botscore:
+            logger.info(f"✅ Módulo Elite: BotScore integration ATIVA (tipo: {type(self.botscore).__name__})")
+        else:
+            logger.warning("⚠️ Módulo Elite: BotScore integration NÃO DISPONÍVEL (botscore=None)")
+        
+        logger.info(f"🌟 Módulo Elite inicializado com {len(self.elite_teams)} times - MODO OTIMIZADO")
     
     def normalize_name(self, name):
         """Normaliza nomes de times para melhor correspondência"""
