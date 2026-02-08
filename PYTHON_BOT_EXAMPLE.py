@@ -80,6 +80,9 @@ class BotScoreProIntegration:
             
             # Inserir no Supabase
             result = self.supabase.table('opportunities').insert(data_to_insert).execute()
+# O supabase-py já retorna os dados por padrão, mas verifique se há erro silencioso
+if hasattr(result, 'error') and result.error:
+    logger.error(f"Erro do Supabase: {result.error}")
             
             if result.data:
                 logger.info(f"✅ Oportunidade enviada: {opportunity_data['match_info']} ({opportunity_data['market']})")
