@@ -134,7 +134,7 @@ class BotConsolidado:
             ('elite', Config.ELITE_ENABLED, JogosEliteModule, "Elite"),
             ('regressao', Config.REGRESSAO_ENABLED, RegressaoMediaModule, "Regressão"),
         ]
-        
+
         for key, enabled, module_class, name in module_configs:
             if enabled:
                 try:
@@ -143,7 +143,7 @@ class BotConsolidado:
                     logger.info(f"✅ Módulo {name} inicializado")
                 except Exception as e:
                     logger.error(f"❌ Erro ao inicializar módulo {name}: {e}")
-        
+
         # Campeonatos (import dinâmico)
         if Config.CAMPEONATOS_ENABLED:
             try:
@@ -152,13 +152,14 @@ class BotConsolidado:
                 self.modules['campeonatos'] = CampeonatosPadraoModule(
                     self.telegram_client, 
                     self.api_client,
-                    botscore  # ✅ ADICIONADO
+                    botscore
                 )
                 logger.info("✅ Módulo Campeonatos inicializado")
             except ImportError:
                 logger.warning("⚠️ Módulo Campeonatos não encontrado")
             except Exception as e:
                 logger.error(f"❌ Erro ao inicializar módulo Campeonatos: {e}")
+
     
     def _setup_scheduler(self):
         """Configura agendamento otimizado para 2000 requests/dia"""
